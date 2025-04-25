@@ -24,6 +24,7 @@ sudo curl -fsSL https://github.com/TinsFox/github-hosts/releases/download/v0.0.1
 
 > [!IMPORTANT]
 > Windows 与 Linux 的脚本还没有经过测试，遇到问题请提 issue
+> Windows 运行会报错（短期没有计划修复），详见 https://github.com/TinsFox/github-hosts/issues/9#issuecomment-2784579629
 
 #### Windows 用户
 在管理员权限的 PowerShell 中执行：
