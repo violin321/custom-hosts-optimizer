@@ -96,6 +96,7 @@ pnpm run deploy # 部署到 Cloudflare
 ## 鸣谢
 
 - [GitHub520](https://github.com/521xueweihan/GitHub520)
+- [![Powered by DartNode](https://dartnode.com/branding/DN-Open-Source-sm.png)](https://dartnode.com "Powered by DartNode - Free VPS for Open Source")
 
 ## 许可证
 
