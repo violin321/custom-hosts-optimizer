@@ -13,7 +13,8 @@ jobs:
     name: Deploy
     environment: production  # 添加环境保护
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,38 +32,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Verify Cloudflare API Token
+      - name: Verify Cloudflare Credentials
         run: |
-          echo "🔍 验证 Cloudflare API Token..."
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "❌ CLOUDFLARE_API_TOKEN 环境变量未设置"
+          echo "🔍 验证 Cloudflare 凭据..."
+          
+          # 检查必需的环境变量
+          if [ -z "$CLOUDFLARE_API_KEY" ]; then
+            echo "❌ CLOUDFLARE_API_KEY 环境变量未设置"
+            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_API_KEY"
             exit 1
           fi
-          echo "✅ CLOUDFLARE_API_TOKEN 已设置"
+          
+          if [ -z "$CLOUDFLARE_EMAIL" ]; then
+            echo "❌ CLOUDFLARE_EMAIL 环境变量未设置"
+            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_EMAIL"
+            exit 1
+          fi
+          
+          echo "✅ CLOUDFLARE_API_KEY 已设置"
+          echo "✅ CLOUDFLARE_EMAIL 已设置"
           
           # 验证用户信息
           echo "👤 验证用户信息..."
           pnpm exec wrangler whoami || {
-            echo "❌ 无法获取用户信息"
+            echo "❌ 无法获取用户信息，请检查 Global API Key 和邮箱是否正确"
+            echo "📧 邮箱应该是: $CLOUDFLARE_EMAIL"
             exit 1
           }
           
-          # 验证账户权限
-          echo "🏢 验证账户权限..."
-          pnpm exec wrangler kv:namespace list --preview false 2>/dev/null || {
-            echo "❌ API Token 缺少必要的 Workers 权限"
-            echo "📖 请确保 API Token 具有以下权限："
-            echo "   ✅ Account: Cloudflare Workers:Edit"
-            echo "   ✅ Account: Account:Read"
-            echo "   ✅ User: User:Read"
-            echo "   ✅ Zone: Zone:Read (如果使用自定义域名)"
-            echo ""
-            echo "🔗 访问以下链接重新配置 Token："
-            echo "   https://dash.cloudflare.com/profile/api-tokens"
-            exit 1
-          }
-          
-          echo "✅ API Token 权限验证通过"
+          echo "✅ Cloudflare 凭据验证通过"
 
       - name: Create KV namespace (if needed)
         run: |
@@ -81,14 +79,12 @@ jobs:
             echo ""
             echo "❌ 部署失败！"
             echo "🔧 常见解决方案："
-            echo "1. 检查 API Token 权限是否包含："
-            echo "   - Account: Cloudflare Workers:Edit"
-            echo "   - Account: Account:Read" 
-            echo "   - User: User:Read"
-            echo "2. 确认 wrangler.toml 中的配置正确"
-            echo "3. 检查是否有足够的 Workers 订阅配额"
+            echo "1. 检查 Global API Key 是否正确"
+            echo "2. 确认邮箱地址与 Cloudflare 账户匹配"
+            echo "3. 确认 wrangler.toml 中的配置正确"
+            echo "4. 检查是否有足够的 Workers 订阅配额"
             echo ""
-            echo "🔗 API Token 配置: https://dash.cloudflare.com/profile/api-tokens"
+            echo "🔗 Global API Key: https://dash.cloudflare.com/profile/api-tokens"
             exit 1
           fi
           
