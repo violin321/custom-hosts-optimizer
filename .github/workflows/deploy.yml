@@ -70,15 +70,23 @@ jobs:
           
           echo ""
           echo "📄 当前 wrangler.toml 中配置的 KV 命名空间："
-          grep -A 3 "kv_namespaces" wrangler.toml || echo "未找到 KV 配置"
+          grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml || echo "未找到 KV 配置"
 
       - name: Smart KV namespace management
         run: |
           echo "🧠 智能 KV 命名空间管理..."
           
           # 获取当前配置的 KV ID
-          CURRENT_KV_ID=$(grep 'id = ' wrangler.toml | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
+          CURRENT_KV_ID=$(grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
           echo "📋 当前配置的 KV ID: $CURRENT_KV_ID"
+          
+          # 检查 KV ID 是否为空
+          if [ -z "$CURRENT_KV_ID" ]; then
+            echo "⚠️ 无法从 wrangler.toml 获取 KV ID"
+            echo "📄 当前 wrangler.toml KV 配置："
+            grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml || echo "未找到 KV 配置"
+            exit 1
+          fi
           
           # 检查当前 KV 是否存在
           echo "🔍 验证当前 KV 命名空间是否存在..."
@@ -146,7 +154,7 @@ jobs:
           
           echo ""
           echo "📄 最终的 KV 配置："
-          grep -A 3 "kv_namespaces" wrangler.toml
+          grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml
 
       - name: Deploy to Cloudflare Workers
         run: |
