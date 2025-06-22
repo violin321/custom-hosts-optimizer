@@ -11,6 +11,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
+    environment: production  # 添加环境保护
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,13 +38,9 @@ jobs:
             echo "Creating new KV namespace..."
             pnpm exec wrangler kv:namespace create "github_hosts"
           fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Deploy to Cloudflare Workers
         run: pnpm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
       - name: Set secrets
         run: |
@@ -56,5 +55,3 @@ jobs:
           else
             echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
           fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
