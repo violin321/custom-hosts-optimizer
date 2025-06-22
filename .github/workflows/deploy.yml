@@ -218,15 +218,19 @@ jobs:
             
             # 构建提交消息
             RUN_NUMBER="${{ github.run_number }}"
-            COMMIT_MSG="chore: 自动更新 KV 命名空间配置
-
-KV 命名空间 ID: $KV_NAMESPACE_ID
-更新时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-部署运行: #$RUN_NUMBER
-
-[skip ci]"
+            CURRENT_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
             
-            git commit -m "$COMMIT_MSG" || echo "没有变化需要提交"
+            # 创建提交消息
+            echo "chore: 自动更新 KV 命名空间配置" > commit_message.txt
+            echo "" >> commit_message.txt
+            echo "KV 命名空间 ID: $KV_NAMESPACE_ID" >> commit_message.txt
+            echo "更新时间: $CURRENT_TIME" >> commit_message.txt
+            echo "部署运行: #$RUN_NUMBER" >> commit_message.txt
+            echo "" >> commit_message.txt
+            echo "[skip ci]" >> commit_message.txt
+            
+            git commit -F commit_message.txt || echo "没有变化需要提交"
+            rm -f commit_message.txt
             
             echo "ℹ️ 配置已更新，下次推送时会包含新的 KV 配置"
           fi
