@@ -13,8 +13,8 @@ assets = { directory = "public" }
 # KV 数据库绑定
 [[kv_namespaces]]
 binding = "custom_hosts"
-id = "5a815bcfbfd84763b385827922479b53"  # 你的实际 KV 命名空间 ID
-preview_id = "5a815bcfbfd84763b385827922479b53"  # 预览环境的 KV ID
+id = "2d6d2f028fed47328648d9c2f86beb9b"  # 你的实际 KV 命名空间 ID
+preview_id = "2d6d2f028fed47328648d9c2f86beb9b"  # 预览环境的 KV ID
 
 # 监控配置
 [observability]
