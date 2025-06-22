@@ -4,29 +4,32 @@ compatibility_date = "2024-10-28"
 compatibility_flags = ["nodejs_compat"]
 assets = { directory = "public" }
 
+# 环境变量配置
+# 生产环境请使用 wrangler secret 命令设置
 # [vars]
-# API_KEY = ""
+# API_KEY = "your-secure-api-key"
+# ENABLE_OPTIMIZATION = "false"
 
+# KV 数据库绑定
 [[kv_namespaces]]
 binding = "github_hosts"
-id = "b47d7f8c9df14032b4fd6c65b2f81e63"
+id = "b47d7f8c9df14032b4fd6c65b2f81e63"  # 请替换为你的实际 KV 命名空间 ID
+preview_id = "b47d7f8c9df14032b4fd6c65b2f81e63"  # 预览环境的 KV ID
 
-
-# [[r2_buckets]]
-# binding = "MY_BUCKET"
-# bucket_name = "my-bucket"
-
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "my-database"
-# database_id = ""
-
-# [ai]
-# binding = "AI"
-
+# 监控配置
 [observability]
 enabled = true
 head_sampling_rate = 1
 
+# 定时任务配置 - 每小时执行一次
 [triggers]
 crons = ["0 */1 * * *"]
+
+# 多环境配置示例
+# [env.staging]
+# name = "github-hosts-staging"
+# vars = { ENABLE_OPTIMIZATION = "true" }
+
+# [env.production] 
+# name = "github-hosts-production"
+# vars = { ENABLE_OPTIMIZATION = "false" }

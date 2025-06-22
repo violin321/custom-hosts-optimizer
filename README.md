@@ -4,6 +4,14 @@
   <p>GitHub 访问加速，解决 GitHub 访问慢的问题。使用 Cloudflare Workers 和公共 DNS API 来获取 IP 地址。</p>
 </div>
 
+## 🚀 新功能
+
+- ✨ **自定义域名管理** - 添加任意域名进行 IP 优选
+- ⚡ **智能 IP 优选** - 自动测试响应时间，选择最快 IP
+- 🎯 **现代化界面** - 全新的选项卡式管理界面
+- 🔧 **完整 API** - RESTful API 支持所有功能
+- 🤖 **GitHub Actions** - 一键自动化部署
+
 ## 特性
 
 - 🚀 使用 Cloudflare Workers 部署，无需服务器
@@ -12,19 +20,70 @@
 - 💾 使用 Cloudflare KV 存储数据
 - 🔄 提供多种使用方式（脚本、手动、工具）
 - 📡 提供 REST API 接口
+- 🎯 自定义域名 IP 优选
+- 🧠 智能响应时间检测
+
+## 快速开始
+
+### 方法 1：使用已部署的服务
+
+直接使用我们的公共服务：`https://github-hosts.tinsfox.com`
+
+### 方法 2：GitHub Actions 一键部署
+
+1. Fork 这个仓库
+2. 在 GitHub Secrets 中设置：
+   - `CLOUDFLARE_API_TOKEN` - 你的 Cloudflare API Token
+   - `WORKER_API_KEY` - 自定义的安全密钥
+3. 触发 GitHub Actions 自动部署
+
+详细说明：[GitHub Actions 部署指南](GITHUB_ACTIONS_DEPLOY.md)
+
+### 方法 3：手动部署
+
+```bash
+# 克隆仓库
+git clone https://github.com/TinsFox/github-hosts.git
+cd github-hosts
+
+# 安装依赖
+pnpm install
+
+# 登录 Cloudflare
+pnpm exec wrangler auth login
+
+# 一键部署
+./deploy.sh
+```
+
+详细说明：[手动部署指南](DEPLOYMENT.md)
 
 ## 使用方法
 
-### 1. 命令行工具（推荐）
+### 🌐 Web 界面
+
+访问部署的 Worker URL，使用现代化的 Web 界面：
+
+- **Hosts 文件** - 查看和下载 hosts 文件
+- **自定义域名** - 管理你的自定义域名
+- **API 文档** - 查看完整 API 文档
+- **使用帮助** - 详细使用说明
+
+### 📋 SwitchHosts 工具
+
+1. 下载 [SwitchHosts](https://github.com/oldj/SwitchHosts)
+2. 添加规则：
+   - 方案名：GitHub Hosts
+   - 类型：远程
+   - URL：`https://your-worker-url.workers.dev/hosts`
+   - 自动更新：1 小时
+
+### 💻 命令行工具
 
 #### MacOS 用户
 ```bash
 sudo curl -fsSL https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-hosts.darwin-arm64 -o github-hosts && sudo chmod +x ./github-hosts && ./github-hosts
 ```
-
-> [!IMPORTANT]
-> Windows 与 Linux 的脚本还没有经过测试，遇到问题请提 issue
-> Windows 运行会报错（短期没有计划修复），详见 https://github.com/TinsFox/github-hosts/issues/9#issuecomment-2784579629
 
 #### Windows 用户
 在管理员权限的 PowerShell 中执行：
@@ -37,16 +96,145 @@ irm https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-host
 sudo curl -fsSL https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-hosts.linux-amd64 -o github-hosts && sudo chmod +x ./github-hosts && ./github-hosts
 ```
 
-> 更多版本请查看 [Release 页面](https://github.com/TinsFox/github-hosts/releases)
+## 🆕 自定义域名功能
 
-### 2. SwitchHosts 工具
+### 添加自定义域名
 
-1. 下载 [SwitchHosts](https://github.com/oldj/SwitchHosts)
-2. 添加规则：
-   - 方案名：GitHub Hosts
-   - 类型：远程
-   - URL：`https://github-hosts.tinsfox.com/hosts`
-   - 自动更新：1 小时
+```bash
+curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "description": "我的网站"}'
+```
+
+### 优选域名 IP
+
+```bash
+curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=YOUR_API_KEY"
+```
+
+### 获取优选后的 hosts
+
+```bash
+# 包含 IP 优选和自定义域名
+curl "https://your-worker-url.workers.dev/hosts?optimize=true&custom=true"
+```
+
+## 🔧 API 文档
+
+### 基础接口
+
+| 接口 | 方法 | 参数 | 描述 |
+|------|------|------|------|
+| `/hosts` | GET | `optimize`, `custom` | 获取 hosts 文件内容 |
+| `/hosts.json` | GET | `optimize`, `custom` | 获取 JSON 格式数据 |
+| `/{domain}` | GET | - | 获取指定域名的实时解析结果 |
+
+### 管理接口（需要 API Key）
+
+| 接口 | 方法 | 描述 |
+|------|------|------|
+| `/api/custom-domains` | GET | 获取自定义域名列表 |
+| `/api/custom-domains` | POST | 添加自定义域名 |
+| `/api/custom-domains/{domain}` | DELETE | 删除自定义域名 |
+| `/api/optimize/{domain}` | POST | 优选指定域名的 IP |
+| `/reset` | POST | 清空缓存并重新获取数据 |
+
+## 💡 使用场景
+
+### 企业内网优化
+为企业内部服务域名选择最优 IP：
+```bash
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=API_KEY" \
+  -d '{"domain": "internal.company.com", "description": "内部服务"}'
+```
+
+### CDN 节点优选
+为 CDN 域名选择最快的边缘节点：
+```bash
+curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=API_KEY"
+```
+
+### 游戏加速
+为游戏服务器选择低延迟 IP：
+```bash
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=API_KEY" \
+  -d '{"domain": "game-server.com", "description": "游戏服务器"}'
+```
+
+## 🎯 高级功能
+
+### IP 优选算法
+- 从多个 DNS 提供商获取所有可用 IP
+- 并发测试每个 IP 的响应时间
+- 自动选择响应最快的 IP 地址
+- 智能缓存避免重复测试
+
+### 智能缓存
+- GitHub 域名数据缓存 1 小时
+- 自定义域名优选结果长期缓存
+- 支持手动刷新和重置
+
+### 定时任务
+- 每小时自动更新 DNS 记录
+- 可选择是否启用 IP 优选
+- 通过环境变量控制行为
+
+## ⚙️ 配置选项
+
+### 环境变量
+
+- `API_KEY` - 管理 API 的密钥（必需）
+- `ENABLE_OPTIMIZATION` - 定时任务是否启用优选（可选）
+
+### wrangler.toml 配置
+
+```toml
+[triggers]
+crons = ["0 */1 * * *"]  # 每小时执行
+
+[[kv_namespaces]]
+binding = "github_hosts"
+id = "your-kv-namespace-id"
+```
+
+## 📊 性能与限制
+
+### Cloudflare 免费限制
+- Workers: 100,000 requests/day
+- KV: 100,000 reads/day, 1,000 writes/day
+- 适合个人和小团队使用
+
+### 性能优化建议
+- IP 优选会增加响应时间，建议非实时场景使用
+- 合理设置定时任务频率
+- 利用缓存机制减少重复计算
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建功能分支：`git checkout -b feature/amazing-feature`
+3. 提交更改：`git commit -m 'Add amazing feature'`
+4. 推送分支：`git push origin feature/amazing-feature`
+5. 提交 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 🙏 致谢
+
+- 感谢 [GitHub520](https://github.com/521xueweihan/GitHub520) 提供的灵感
+- 感谢 Cloudflare 提供的强大平台
+- 感谢所有贡献者和用户的支持
+
+---
+
+<div align="center">
+  <p>Made with ❤️ by <a href="https://github.com/TinsFox">TinsFox</a></p>
+  <p>如果这个项目对你有帮助，请考虑给个 ⭐️</p>
+</div>
 
 ### 3. 手动更新
 
