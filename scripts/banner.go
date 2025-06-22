@@ -6,7 +6,7 @@ const banner = `
  / / __/ / __/ __ \/ / / / __ \/ __ \/ __ \/ __/ __/ ___/
 / /_/ / / /_/ / / / /_/ / / / / /_/ / /_/ / /_/ /_(__  )
 \____/_/\__/_/ /_/\__,_/_/ /_/\____/\____/\__/\__/____/
-GitHub Hosts Manager - https://github.com/TinsFox/github-hosts
+优选自定义host - https://github.com/Yan-nian/hosts
 Version: 1.0.0
 加速访问 GitHub
 `

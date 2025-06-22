@@ -130,7 +130,7 @@ export async function storeData(
   await updateHostsData(env, data)
 }
 export async function getHostsData(env: Bindings, useOptimization: boolean = false): Promise<HostEntry[]> {
-  const kvData = (await env.github_hosts.get("domain_data", {
+  const kvData = (await env.custom_hosts.get("domain_data", {
     type: "json",
   })) as KVData | null
 
@@ -167,7 +167,7 @@ export async function updateHostsData(
 ): Promise<void> {
   try {
     const currentTime = new Date().toISOString()
-    const kvData = (await env.github_hosts.get("domain_data", {
+    const kvData = (await env.custom_hosts.get("domain_data", {
       type: "json",
     })) as KVData | null || { domain_data: {}, lastUpdated: currentTime }
 
@@ -194,7 +194,7 @@ export async function updateHostsData(
     }
 
     kvData.lastUpdated = currentTime
-    await env.github_hosts.put("domain_data", JSON.stringify(kvData))
+    await env.custom_hosts.put("domain_data", JSON.stringify(kvData))
   } catch (error) {
     console.error("Error updating hosts data:", error)
   }
@@ -228,7 +228,7 @@ export async function getDomainData(
     }
 
     const currentTime = new Date().toISOString()
-    const kvData = (await env.github_hosts.get("domain_data", {
+    const kvData = (await env.custom_hosts.get("domain_data", {
       type: "json",
     })) as KVData | null || { domain_data: {}, lastUpdated: currentTime }
 
@@ -240,7 +240,7 @@ export async function getDomainData(
 
     kvData.domain_data[domain] = newData
     kvData.lastUpdated = currentTime
-    await env.github_hosts.put("domain_data", JSON.stringify(kvData))
+    await env.custom_hosts.put("domain_data", JSON.stringify(kvData))
 
     return newData
   } catch (error) {
@@ -253,7 +253,7 @@ export async function getDomainData(
 export async function resetHostsData(env: Bindings, useOptimization: boolean = false): Promise<HostEntry[]> {
   try {
     console.log("Clearing KV data...")
-    await env.github_hosts.delete("domain_data")
+    await env.custom_hosts.delete("domain_data")
     console.log("KV data cleared")
 
     console.log("Fetching new data...")
@@ -368,7 +368,7 @@ export async function optimizeDomainIP(domain: string): Promise<{ ip: string, re
 // 新增：自定义域名管理函数
 export async function getCustomDomains(env: Bindings): Promise<CustomDomainList> {
   try {
-    const data = await env.github_hosts.get("custom_domains", { type: "json" }) as CustomDomainList | null
+    const data = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomainList | null
     return data || {}
   } catch (error) {
     console.error("Error getting custom domains:", error)
@@ -386,7 +386,7 @@ export async function addCustomDomain(env: Bindings, domain: string, description
       addedAt: new Date().toISOString()
     }
     
-    await env.github_hosts.put("custom_domains", JSON.stringify(customDomains))
+    await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
     return true
   } catch (error) {
     console.error("Error adding custom domain:", error)
@@ -400,7 +400,7 @@ export async function removeCustomDomain(env: Bindings, domain: string): Promise
     
     if (customDomains[domain]) {
       delete customDomains[domain]
-      await env.github_hosts.put("custom_domains", JSON.stringify(customDomains))
+      await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
       return true
     }
     
@@ -423,7 +423,7 @@ export async function optimizeCustomDomain(env: Bindings, domain: string): Promi
     const customDomains = await getCustomDomains(env)
     if (customDomains[domain]) {
       customDomains[domain].lastUpdated = new Date().toISOString()
-      await env.github_hosts.put("custom_domains", JSON.stringify(customDomains))
+      await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
     }
     
     return {

@@ -4,9 +4,6 @@ const baseUrl = window.location.origin
 // 当前激活的选项卡
 let currentTab = 'hosts'
 
-// API Key（从 localStorage 获取）
-let apiKey = localStorage.getItem('github-hosts-api-key') || ''
-
 function escapeHtml(str) {
   const div = document.createElement("div")
   div.textContent = str
@@ -116,20 +113,12 @@ async function loadCustomDomains() {
   const container = document.getElementById('customDomainsList')
   if (!container) return
   
-  if (!apiKey) {
-    container.innerHTML = '<p>请输入 API Key 查看自定义域名列表</p>'
-    return
-  }
-  
   try {
     container.innerHTML = '<div class="loading">正在加载自定义域名...</div>'
     
-    const response = await fetch(`${baseUrl}/api/custom-domains?key=${encodeURIComponent(apiKey)}`)
+    const response = await fetch(`${baseUrl}/api/custom-domains`)
     
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('API Key 无效')
-      }
       throw new Error('加载失败')
     }
     
@@ -165,19 +154,12 @@ async function loadCustomDomains() {
 async function addCustomDomain() {
   const domainInput = document.getElementById('domainInput')
   const descriptionInput = document.getElementById('descriptionInput')
-  const apiKeyInput = document.getElementById('apiKey')
   
   const domain = domainInput.value.trim()
   const description = descriptionInput.value.trim()
-  const currentApiKey = apiKeyInput.value.trim() || apiKey
   
   if (!domain) {
     showMessage('请输入域名', 'error')
-    return
-  }
-  
-  if (!currentApiKey) {
-    showMessage('请输入 API Key', 'error')
     return
   }
   
@@ -188,7 +170,7 @@ async function addCustomDomain() {
   }
   
   try {
-    const response = await fetch(`${baseUrl}/api/custom-domains?key=${encodeURIComponent(currentApiKey)}`, {
+    const response = await fetch(`${baseUrl}/api/custom-domains`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -197,17 +179,8 @@ async function addCustomDomain() {
     })
     
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('API Key 无效')
-      }
       const error = await response.json()
       throw new Error(error.error || '添加失败')
-    }
-    
-    // 保存 API Key
-    if (currentApiKey !== apiKey) {
-      apiKey = currentApiKey
-      localStorage.setItem('github-hosts-api-key', apiKey)
     }
     
     showMessage(`域名 ${domain} 添加成功`, 'success')
@@ -224,26 +197,107 @@ async function addCustomDomain() {
   }
 }
 
+// 批量添加自定义域名
+async function addCustomDomainsBatch() {
+  const batchInput = document.getElementById('batchDomainsInput')
+  const batchContent = batchInput.value.trim()
+  
+  if (!batchContent) {
+    showMessage('请输入域名列表', 'error')
+    return
+  }
+  
+  // 解析域名列表（支持多种格式）
+  const lines = batchContent.split('\n').filter(line => line.trim())
+  const domains = []
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim()
+    if (!trimmedLine) continue
+    
+    // 支持多种格式：
+    // 1. domain.com
+    // 2. domain.com,description
+    // 3. domain.com description
+    let domain, description = ''
+    
+    if (trimmedLine.includes(',')) {
+      const parts = trimmedLine.split(',')
+      domain = parts[0].trim()
+      description = parts.slice(1).join(',').trim()
+    } else if (trimmedLine.includes(' ')) {
+      const parts = trimmedLine.split(/\s+/)
+      domain = parts[0].trim()
+      description = parts.slice(1).join(' ').trim()
+    } else {
+      domain = trimmedLine
+    }
+    
+    if (domain) {
+      domains.push({ domain, description })
+    }
+  }
+  
+  if (domains.length === 0) {
+    showMessage('未找到有效的域名', 'error')
+    return
+  }
+  
+  try {
+    showMessage(`正在批量添加 ${domains.length} 个域名...`, 'info')
+    
+    const response = await fetch(`${baseUrl}/api/custom-domains/batch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ domains })
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || '批量添加失败')
+    }
+    
+    const result = await response.json()
+    
+    let message = `批量添加完成：成功 ${result.added} 个`
+    if (result.failed > 0) {
+      message += `，失败 ${result.failed} 个`
+    }
+    
+    showMessage(message, result.failed > 0 ? 'warning' : 'success')
+    
+    // 显示详细错误信息
+    if (result.errors.length > 0) {
+      console.log('批量添加错误详情:', result.errors)
+      const errorMessages = result.errors.map(err => `${err.domain}: ${err.error}`).join('\n')
+      showMessage(`错误详情：\n${errorMessages}`, 'error')
+    }
+    
+    // 清空表单
+    batchInput.value = ''
+    
+    // 重新加载域名列表
+    loadCustomDomains()
+  } catch (error) {
+    showMessage(`批量添加失败: ${error.message}`, 'error')
+    console.error('Error batch adding domains:', error)
+  }
+}
+
 // 删除自定义域名
 async function removeDomain(domain) {
   if (!confirm(`确定要删除域名 ${domain} 吗？`)) {
     return
   }
   
-  if (!apiKey) {
-    showMessage('请先输入 API Key', 'error')
-    return
-  }
-  
   try {
-    const response = await fetch(`${baseUrl}/api/custom-domains/${encodeURIComponent(domain)}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(`${baseUrl}/api/custom-domains/${encodeURIComponent(domain)}`, {
       method: 'DELETE'
     })
     
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('API Key 无效')
-      }
       throw new Error('删除失败')
     }
     
@@ -257,22 +311,14 @@ async function removeDomain(domain) {
 
 // 优选域名
 async function optimizeDomain(domain) {
-  if (!apiKey) {
-    showMessage('请先输入 API Key', 'error')
-    return
-  }
-  
   try {
     showMessage(`正在为 ${domain} 进行 IP 优选...`, 'info')
     
-    const response = await fetch(`${baseUrl}/api/optimize/${encodeURIComponent(domain)}?key=${encodeURIComponent(apiKey)}`, {
+    const response = await fetch(`${baseUrl}/api/optimize/${encodeURIComponent(domain)}`, {
       method: 'POST'
     })
     
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('API Key 无效')
-      }
       throw new Error('优选失败')
     }
     
@@ -340,25 +386,10 @@ function setupEventListeners() {
     addDomainBtn.addEventListener('click', addCustomDomain)
   }
   
-  // API Key 输入框变化事件
-  const apiKeyInput = document.getElementById('apiKey')
-  if (apiKeyInput) {
-    // 设置初始值
-    if (apiKey) {
-      apiKeyInput.value = apiKey
-    }
-    
-    apiKeyInput.addEventListener('input', (e) => {
-      const newApiKey = e.target.value.trim()
-      if (newApiKey !== apiKey) {
-        apiKey = newApiKey
-        localStorage.setItem('github-hosts-api-key', apiKey)
-        // 如果在自定义域名选项卡，重新加载列表
-        if (currentTab === 'custom') {
-          loadCustomDomains()
-        }
-      }
-    })
+  // 批量添加域名按钮
+  const addBatchBtn = document.getElementById('addBatchDomains')
+  if (addBatchBtn) {
+    addBatchBtn.addEventListener('click', addCustomDomainsBatch)
   }
   
   // 表单回车提交

@@ -1,4 +1,4 @@
-name = "github-hosts"
+name = "custom-hosts-optimizer"
 main = "src/index.ts"
 compatibility_date = "2024-10-28"
 compatibility_flags = ["nodejs_compat"]
@@ -12,7 +12,7 @@ assets = { directory = "public" }
 
 # KV 数据库绑定
 [[kv_namespaces]]
-binding = "github_hosts"
+binding = "custom_hosts"
 id = "b47d7f8c9df14032b4fd6c65b2f81e63"  # 请替换为你的实际 KV 命名空间 ID
 preview_id = "b47d7f8c9df14032b4fd6c65b2f81e63"  # 预览环境的 KV ID
 

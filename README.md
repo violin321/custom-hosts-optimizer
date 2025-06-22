@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="public/logo.svg" width="140" height="140" alt="github-hosts logo">
-  <h1>github-hosts</h1>
-  <p>GitHub 访问加速，解决 GitHub 访问慢的问题。使用 Cloudflare Workers 和公共 DNS API 来获取 IP 地址。</p>
+  <img src="public/logo.svg" width="140" height="140" alt="优选自定义host logo">
+  <h1>优选自定义host</h1>
+  <p>自定义域名访问加速，智能 IP 优选解决访问慢的问题。使用 Cloudflare Workers 和公共 DNS API 来获取最优 IP 地址。</p>
 </div>
 
 ## 🚀 新功能
@@ -34,8 +34,9 @@
 1. Fork 这个仓库
 2. 在 GitHub Secrets 中设置：
    - `CLOUDFLARE_API_TOKEN` - 你的 Cloudflare API Token
-   - `WORKER_API_KEY` - 自定义的安全密钥
 3. 触发 GitHub Actions 自动部署
+
+> **功能说明**：现在无需 API Key，可以直接使用所有自定义域名功能。详细使用方法请参考：[自定义域名管理指南](CUSTOM_DOMAINS_GUIDE.md)
 
 详细说明：[GitHub Actions 部署指南](GITHUB_ACTIONS_DEPLOY.md)
 
@@ -43,8 +44,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/TinsFox/github-hosts.git
-cd github-hosts
+git clone https://github.com/Yan-nian/hosts.git
+cd hosts
 
 # 安装依赖
 pnpm install
@@ -82,18 +83,18 @@ pnpm exec wrangler auth login
 
 #### MacOS 用户
 ```bash
-sudo curl -fsSL https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-hosts.darwin-arm64 -o github-hosts && sudo chmod +x ./github-hosts && ./github-hosts
+sudo curl -fsSL https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.darwin-arm64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
 ```
 
 #### Windows 用户
 在管理员权限的 PowerShell 中执行：
 ```powershell
-irm https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-hosts.windows-amd64.exe | iex
+irm https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.windows-amd64.exe | iex
 ```
 
 #### Linux 用户
 ```bash
-sudo curl -fsSL https://github.com/TinsFox/github-hosts/releases/download/v0.0.1/github-hosts.linux-amd64 -o github-hosts && sudo chmod +x ./github-hosts && ./github-hosts
+sudo curl -fsSL https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.linux-amd64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
 ```
 
 ## 🆕 自定义域名功能
@@ -279,7 +280,7 @@ pnpm run dev    # 本地开发
 pnpm run deploy # 部署到 Cloudflare
 ```
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/TinsFox/github-hosts)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/hosts)
 
 ## 鸣谢
 

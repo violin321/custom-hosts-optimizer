@@ -61,22 +61,11 @@ app.get("/hosts", async (c) => {
 
 // 自定义域名管理 API
 app.get("/api/custom-domains", async (c) => {
-  const apiKey = c.req.query("key")
-
-  if (apiKey !== c.env.API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
-
   const customDomains = await getCustomDomains(c.env)
   return c.json(customDomains)
 })
 
 app.post("/api/custom-domains", async (c) => {
-  const apiKey = c.req.query("key")
-
-  if (apiKey !== c.env.API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
 
   try {
     const body = await c.req.json()
@@ -103,13 +92,58 @@ app.post("/api/custom-domains", async (c) => {
   }
 })
 
-app.delete("/api/custom-domains/:domain", async (c) => {
-  const apiKey = c.req.query("key")
+// 批量添加自定义域名 API
+app.post("/api/custom-domains/batch", async (c) => {
+  try {
+    const body = await c.req.json()
+    const { domains } = body
 
-  if (apiKey !== c.env.API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401)
+    if (!domains || !Array.isArray(domains)) {
+      return c.json({ error: "Domains array is required" }, 400)
+    }
+
+    const results = []
+    const errors = []
+
+    for (const domainData of domains) {
+      const { domain, description } = domainData
+
+      if (!domain || typeof domain !== "string") {
+        errors.push({ domain: domain || "unknown", error: "Domain is required" })
+        continue
+      }
+
+      // 简单的域名格式验证
+      if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
+        errors.push({ domain, error: "Invalid domain format" })
+        continue
+      }
+
+      try {
+        const success = await addCustomDomain(c.env, domain, description)
+        if (success) {
+          results.push({ domain, status: "success" })
+        } else {
+          errors.push({ domain, error: "Failed to add domain" })
+        }
+      } catch (error) {
+        errors.push({ domain, error: error instanceof Error ? error.message : "Unknown error" })
+      }
+    }
+
+    return c.json({
+      message: "Batch operation completed",
+      added: results.length,
+      failed: errors.length,
+      results,
+      errors
+    })
+  } catch (error) {
+    return c.json({ error: "Invalid request body" }, 400)
   }
+})
 
+app.delete("/api/custom-domains/:domain", async (c) => {
   const domain = c.req.param("domain")
   const success = await removeCustomDomain(c.env, domain)
 
@@ -121,12 +155,6 @@ app.delete("/api/custom-domains/:domain", async (c) => {
 })
 
 app.post("/api/optimize/:domain", async (c) => {
-  const apiKey = c.req.query("key")
-
-  if (apiKey !== c.env.API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
-
   const domain = c.req.param("domain")
   const result = await optimizeCustomDomain(c.env, domain)
 
@@ -137,14 +165,8 @@ app.post("/api/optimize/:domain", async (c) => {
   }
 })
 
-app.post("/reset", async (c) => {
-  const apiKey = c.req.query("key")
+app.post("/api/reset", async (c) => {
   const useOptimization = c.req.query("optimize") === "true"
-
-  // 验证 API key
-  if (apiKey !== c.env.API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401)
-  }
 
   const newEntries = await resetHostsData(c.env, useOptimization)
 
