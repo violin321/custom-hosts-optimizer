@@ -1,0 +1,231 @@
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    environment: production  # 添加环境保护
+    env:
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Verify Cloudflare Credentials
+        run: |
+          echo "🔍 验证 Cloudflare 凭据..."
+          
+          # 检查必需的环境变量
+          if [ -z "$CLOUDFLARE_API_KEY" ]; then
+            echo "❌ CLOUDFLARE_API_KEY 环境变量未设置"
+            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_API_KEY"
+            exit 1
+          fi
+          
+          if [ -z "$CLOUDFLARE_EMAIL" ]; then
+            echo "❌ CLOUDFLARE_EMAIL 环境变量未设置"
+            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_EMAIL"
+            exit 1
+          fi
+          
+          echo "✅ CLOUDFLARE_API_KEY 已设置"
+          echo "✅ CLOUDFLARE_EMAIL 已设置"
+          
+          # 验证用户信息
+          echo "👤 验证用户信息..."
+          pnpm exec wrangler whoami || {
+            echo "❌ 无法获取用户信息，请检查 Global API Key 和邮箱是否正确"
+            echo "📧 邮箱应该是: $CLOUDFLARE_EMAIL"
+            exit 1
+          }
+          
+          echo "✅ Cloudflare 凭据验证通过"
+
+      - name: Check existing KV namespaces
+        run: |
+          echo "🗂️ 检查现有的 KV 命名空间..."
+          echo "📋 列出所有现有的 KV 命名空间："
+          pnpm exec wrangler kv namespace list
+          
+          echo ""
+          echo "📄 当前 wrangler.toml 中配置的 KV 命名空间："
+          grep -A 3 "kv_namespaces" wrangler.toml || echo "未找到 KV 配置"
+
+      - name: Smart KV namespace management
+        run: |
+          echo "🧠 智能 KV 命名空间管理..."
+          
+          # 获取当前配置的 KV ID
+          CURRENT_KV_ID=$(grep 'id = ' wrangler.toml | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
+          echo "� 当前配置的 KV ID: $CURRENT_KV_ID"
+          
+          # 检查当前 KV 是否存在
+          echo "🔍 验证当前 KV 命名空间是否存在..."
+          KV_LIST=$(pnpm exec wrangler kv namespace list)
+          
+          if echo "$KV_LIST" | grep -q "$CURRENT_KV_ID"; then
+            echo "✅ 当前 KV 命名空间 ($CURRENT_KV_ID) 存在，无需创建"
+            KV_NAMESPACE_ID="$CURRENT_KV_ID"
+          else
+            echo "⚠️ 当前配置的 KV 命名空间不存在"
+            
+            # 检查是否有名为 custom_hosts 的命名空间
+            if echo "$KV_LIST" | grep -q "custom_hosts"; then
+              echo "🔍 发现现有的 custom_hosts 命名空间"
+              EXISTING_KV_ID=$(echo "$KV_LIST" | grep "custom_hosts" | sed 's/.*"id": "\([^"]*\)".*/\1/')
+              echo "📝 现有 custom_hosts KV ID: $EXISTING_KV_ID"
+              KV_NAMESPACE_ID="$EXISTING_KV_ID"
+              
+              # 更新 wrangler.toml
+              echo "📝 更新 wrangler.toml 中的 KV ID..."
+              sed -i "s/id = \".*\"/id = \"$EXISTING_KV_ID\"/" wrangler.toml
+              sed -i "s/preview_id = \".*\"/preview_id = \"$EXISTING_KV_ID\"/" wrangler.toml
+              echo "✅ wrangler.toml 已更新为现有的 KV 命名空间"
+            else
+              echo "🆕 需要创建新的 custom_hosts KV 命名空间..."
+              KV_OUTPUT=$(pnpm exec wrangler kv namespace create "custom_hosts" 2>&1)
+              echo "$KV_OUTPUT"
+              
+              # 提取新的 KV ID
+              if echo "$KV_OUTPUT" | grep -q "id"; then
+                NEW_KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[^"]*"' | cut -d'"' -f4)
+                echo "✅ 新 KV 命名空间创建成功，ID: $NEW_KV_ID"
+                KV_NAMESPACE_ID="$NEW_KV_ID"
+                
+                # 更新 wrangler.toml
+                echo "📝 更新 wrangler.toml 中的 KV ID..."
+                sed -i "s/id = \".*\"/id = \"$NEW_KV_ID\"/" wrangler.toml
+                sed -i "s/preview_id = \".*\"/preview_id = \"$NEW_KV_ID\"/" wrangler.toml
+                echo "✅ wrangler.toml 已更新为新的 KV 命名空间"
+              else
+                echo "❌ KV 命名空间创建失败"
+                exit 1
+              fi
+            fi
+          fi
+          
+          # 记录 KV 信息到环境变量和文件
+          echo "📊 记录 KV 命名空间信息..."
+          echo "KV_NAMESPACE_ID=$KV_NAMESPACE_ID" >> $GITHUB_ENV
+          echo "KV_NAMESPACE_NAME=custom_hosts" >> $GITHUB_ENV
+          
+          # 创建 KV 信息文件
+          cat > kv-info.json << EOF
+          {
+            "namespace_id": "$KV_NAMESPACE_ID",
+            "namespace_name": "custom_hosts",
+            "binding_name": "custom_hosts",
+            "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "deployment_run": "${{ github.run_number }}"
+          }
+          EOF
+          
+          echo "📄 KV 信息已保存到 kv-info.json:"
+          cat kv-info.json
+          
+          echo ""
+          echo "📄 最终的 KV 配置："
+          grep -A 3 "kv_namespaces" wrangler.toml
+
+      - name: Deploy to Cloudflare Workers
+        run: |
+          echo "🚀 开始部署到 Cloudflare Workers..."
+          echo "📊 使用的 KV 命名空间信息："
+          echo "   - ID: $KV_NAMESPACE_ID"
+          echo "   - Name: $KV_NAMESPACE_NAME"
+          
+          # 尝试部署，如果失败则提供详细的错误信息
+          if ! pnpm run deploy; then
+            echo ""
+            echo "❌ 部署失败！"
+            echo "🔧 常见解决方案："
+            echo "1. 检查 Global API Key 是否正确"
+            echo "2. 确认邮箱地址与 Cloudflare 账户匹配"
+            echo "3. 确认 wrangler.toml 中的配置正确"
+            echo "4. 检查是否有足够的 Workers 订阅配额"
+            echo "5. 验证 KV 命名空间 ($KV_NAMESPACE_ID) 是否存在"
+            echo ""
+            echo "🔗 Global API Key: https://dash.cloudflare.com/profile/api-tokens"
+            echo "📄 当前 KV 配置:"
+            cat kv-info.json
+            exit 1
+          fi
+          
+          echo "✅ 部署成功！"
+          echo "🎉 Worker 已成功部署并绑定到 KV 命名空间: $KV_NAMESPACE_ID"
+
+      - name: Set secrets
+        run: |
+          echo "🔐 设置 Worker secrets..."
+          
+          # 设置 API Key
+          if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
+            echo "📝 设置 API_KEY..."
+            echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY
+            echo "✅ API_KEY 设置完成"
+          else
+            echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
+          fi
+          
+          # 设置优选功能开关
+          if [ -n "${{ secrets.ENABLE_OPTIMIZATION }}" ]; then
+            echo "📝 设置 ENABLE_OPTIMIZATION 为: ${{ secrets.ENABLE_OPTIMIZATION }}"
+            echo "${{ secrets.ENABLE_OPTIMIZATION }}" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
+          else
+            echo "📝 设置 ENABLE_OPTIMIZATION 为默认值: false"
+            echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
+          fi
+          echo "✅ Secrets 设置完成"
+
+      - name: Save KV namespace info
+        uses: actions/upload-artifact@v4
+        with:
+          name: kv-namespace-info
+          path: kv-info.json
+          retention-days: 30
+
+      - name: Commit updated configuration (if changed)
+        run: |
+          # 检查是否有配置文件的变化
+          if git diff --quiet wrangler.toml; then
+            echo "📄 wrangler.toml 没有变化"
+          else
+            echo "📝 wrangler.toml 有变化，准备提交..."
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add wrangler.toml
+            
+            # 构建提交消息
+            COMMIT_MSG="chore: 自动更新 KV 命名空间配置
+
+KV 命名空间 ID: $KV_NAMESPACE_ID
+更新时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+部署运行: #${{ github.run_number }}
+
+[skip ci]"
+            
+            git commit -m "$COMMIT_MSG" || echo "没有变化需要提交"
+            
+            echo "ℹ️ 配置已更新，下次推送时会包含新的 KV 配置"
+          fi
