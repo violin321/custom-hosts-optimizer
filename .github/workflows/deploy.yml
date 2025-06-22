@@ -217,9 +217,9 @@ jobs:
             git add wrangler.toml
             git commit -m "chore: 自动更新 KV 命名空间配置
 
-- KV 命名空间 ID: $KV_NAMESPACE_ID
-- 更新时间: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-- 部署运行: #${{ github.run_number }}
+KV 命名空间 ID: $KV_NAMESPACE_ID
+更新时间: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+部署运行: #${{ github.run_number }}
 
 [skip ci]" || echo "没有变化需要提交"
             
