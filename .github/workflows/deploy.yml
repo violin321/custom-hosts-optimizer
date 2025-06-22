@@ -31,6 +31,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      - name: Verify Cloudflare API Token
+        run: |
+          echo "🔍 验证 Cloudflare API Token..."
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "❌ CLOUDFLARE_API_TOKEN 环境变量未设置"
+            exit 1
+          fi
+          echo "✅ CLOUDFLARE_API_TOKEN 已设置"
+          
+          # 验证 API Token 权限
+          pnpm exec wrangler whoami || {
+            echo "❌ API Token 验证失败，请检查权限设置"
+            echo "📖 需要的权限："
+            echo "   - Account: Cloudflare Workers:Edit"
+            echo "   - User: User:Read" 
+            echo "   - Zone: Zone:Read (如果使用自定义域名)"
+            exit 1
+          }
+
       - name: Create KV namespace (if needed)
         run: |
           # 检查是否需要创建新的 KV 命名空间
@@ -40,18 +59,29 @@ jobs:
           fi
 
       - name: Deploy to Cloudflare Workers
-        run: pnpm run deploy
+        run: |
+          echo "🚀 开始部署到 Cloudflare Workers..."
+          pnpm run deploy
 
       - name: Set secrets
         run: |
+          echo "🔐 设置 Worker secrets..."
+          
           # 设置 API Key
           if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
+            echo "📝 设置 API_KEY..."
             echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY
+            echo "✅ API_KEY 设置完成"
+          else
+            echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
           fi
           
           # 设置优选功能开关
           if [ -n "${{ secrets.ENABLE_OPTIMIZATION }}" ]; then
+            echo "📝 设置 ENABLE_OPTIMIZATION 为: ${{ secrets.ENABLE_OPTIMIZATION }}"
             echo "${{ secrets.ENABLE_OPTIMIZATION }}" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
           else
+            echo "📝 设置 ENABLE_OPTIMIZATION 为默认值: false"
             echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
           fi
+          echo "✅ Secrets 设置完成"
