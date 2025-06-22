@@ -217,11 +217,12 @@ jobs:
             git add wrangler.toml
             
             # 构建提交消息
+            RUN_NUMBER="${{ github.run_number }}"
             COMMIT_MSG="chore: 自动更新 KV 命名空间配置
 
 KV 命名空间 ID: $KV_NAMESPACE_ID
 更新时间: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-部署运行: #${{ github.run_number }}
+部署运行: #$RUN_NUMBER
 
 [skip ci]"
             
