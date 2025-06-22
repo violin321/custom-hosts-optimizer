@@ -1,8 +1,10 @@
+// Cloudflare Workers 类型通过 @cloudflare/workers-types 全局提供
+/// <reference types="@cloudflare/workers-types" />
+
 export interface Bindings {
-  HOSTS_STORE: KVNamespace
+  custom_hosts: KVNamespace
   API_KEY: string
   ASSETS: { get(key: string): Promise<string | null> }
-  custom_hosts: KVNamespace
   ENABLE_OPTIMIZATION?: string
 }
 
