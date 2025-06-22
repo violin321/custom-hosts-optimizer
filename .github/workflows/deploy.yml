@@ -65,12 +65,17 @@ jobs:
       - name: Check existing KV namespaces
         run: |
           echo "🗂️ 检查现有的 KV 命名空间..."
-          echo "📋 列出所有现有的 KV 命名空间："
-          pnpm exec wrangler kv namespace list
+          echo "📋 检查现有 KV 命名空间数量："
+          KV_COUNT=$(pnpm exec wrangler kv namespace list | jq '. | length' 2>/dev/null || echo "0")
+          echo "发现 $KV_COUNT 个 KV 命名空间"
           
           echo ""
-          echo "📄 当前 wrangler.toml 中配置的 KV 命名空间："
-          grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml || echo "未找到 KV 配置"
+          echo "📄 验证 wrangler.toml 中的 KV 配置是否存在："
+          if grep -q '\[\[kv_namespaces\]\]' wrangler.toml; then
+            echo "✅ 找到 KV 配置"
+          else
+            echo "❌ 未找到 KV 配置"
+          fi
 
       - name: Smart KV namespace management
         run: |
@@ -78,22 +83,23 @@ jobs:
           
           # 获取当前配置的 KV ID
           CURRENT_KV_ID=$(grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
-          echo "📋 当前配置的 KV ID: $CURRENT_KV_ID"
+          echo "📋 检查当前配置的 KV ID..."
           
           # 检查 KV ID 是否为空
           if [ -z "$CURRENT_KV_ID" ]; then
             echo "⚠️ 无法从 wrangler.toml 获取 KV ID"
-            echo "📄 当前 wrangler.toml KV 配置："
-            grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml || echo "未找到 KV 配置"
+            echo "📄 请检查 wrangler.toml 中的 KV 配置格式"
             exit 1
           fi
+          
+          echo "✅ 成功获取配置的 KV ID"
           
           # 检查当前 KV 是否存在
           echo "🔍 验证当前 KV 命名空间是否存在..."
           KV_LIST=$(pnpm exec wrangler kv namespace list)
           
           if echo "$KV_LIST" | grep -q "$CURRENT_KV_ID"; then
-            echo "✅ 当前 KV 命名空间 ($CURRENT_KV_ID) 存在，无需创建"
+            echo "✅ 当前 KV 命名空间存在，无需创建"
             KV_NAMESPACE_ID="$CURRENT_KV_ID"
           else
             echo "⚠️ 当前配置的 KV 命名空间不存在"
@@ -102,7 +108,7 @@ jobs:
             if echo "$KV_LIST" | grep -q "custom_hosts"; then
               echo "🔍 发现现有的 custom_hosts 命名空间"
               EXISTING_KV_ID=$(echo "$KV_LIST" | grep "custom_hosts" | sed 's/.*"id": "\([^"]*\)".*/\1/')
-              echo "📝 现有 custom_hosts KV ID: $EXISTING_KV_ID"
+              echo "📝 将使用现有的 custom_hosts KV 命名空间"
               KV_NAMESPACE_ID="$EXISTING_KV_ID"
               
               # 更新 wrangler.toml
@@ -113,12 +119,11 @@ jobs:
             else
               echo "🆕 需要创建新的 custom_hosts KV 命名空间..."
               KV_OUTPUT=$(pnpm exec wrangler kv namespace create "custom_hosts" 2>&1)
-              echo "$KV_OUTPUT"
               
               # 提取新的 KV ID
               if echo "$KV_OUTPUT" | grep -q "id"; then
                 NEW_KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[^"]*"' | cut -d'"' -f4)
-                echo "✅ 新 KV 命名空间创建成功，ID: $NEW_KV_ID"
+                echo "✅ 新 KV 命名空间创建成功"
                 KV_NAMESPACE_ID="$NEW_KV_ID"
                 
                 # 更新 wrangler.toml
@@ -138,30 +143,31 @@ jobs:
           echo "KV_NAMESPACE_ID=$KV_NAMESPACE_ID" >> $GITHUB_ENV
           echo "KV_NAMESPACE_NAME=custom_hosts" >> $GITHUB_ENV
           
-          # 创建 KV 信息文件
+          # 创建 KV 信息文件（不包含敏感信息）
           cat > kv-info.json << EOF
           {
-            "namespace_id": "$KV_NAMESPACE_ID",
             "namespace_name": "custom_hosts",
             "binding_name": "custom_hosts",
             "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "deployment_run": "${{ github.run_number }}"
+            "deployment_run": "${{ github.run_number }}",
+            "status": "configured"
           }
           EOF
           
-          echo "📄 KV 信息已保存到 kv-info.json:"
-          cat kv-info.json
+          echo "📄 KV 配置信息已保存"
           
           echo ""
-          echo "📄 最终的 KV 配置："
-          grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml
+          echo "📄 验证最终的 KV 配置："
+          if grep -q "binding = \"custom_hosts\"" wrangler.toml; then
+            echo "✅ KV 绑定配置正确"
+          else
+            echo "❌ KV 绑定配置异常"
+          fi
 
       - name: Deploy to Cloudflare Workers
         run: |
           echo "🚀 开始部署到 Cloudflare Workers..."
-          echo "📊 使用的 KV 命名空间信息："
-          echo "   - ID: $KV_NAMESPACE_ID"
-          echo "   - Name: $KV_NAMESPACE_NAME"
+          echo "📊 使用 KV 命名空间: custom_hosts"
           
           # 尝试部署，如果失败则提供详细的错误信息
           if ! pnpm run deploy; then
@@ -172,16 +178,14 @@ jobs:
             echo "2. 确认邮箱地址与 Cloudflare 账户匹配"
             echo "3. 确认 wrangler.toml 中的配置正确"
             echo "4. 检查是否有足够的 Workers 订阅配额"
-            echo "5. 验证 KV 命名空间 ($KV_NAMESPACE_ID) 是否存在"
+            echo "5. 验证 KV 命名空间配置是否正确"
             echo ""
             echo "🔗 Global API Key: https://dash.cloudflare.com/profile/api-tokens"
-            echo "📄 当前 KV 配置:"
-            cat kv-info.json
             exit 1
           fi
           
           echo "✅ 部署成功！"
-          echo "🎉 Worker 已成功部署并绑定到 KV 命名空间: $KV_NAMESPACE_ID"
+          echo "🎉 Worker 已成功部署并绑定到 KV 命名空间"
 
       - name: Set secrets
         run: |
@@ -231,7 +235,7 @@ jobs:
             # 创建提交消息
             echo "chore: 自动更新 KV 命名空间配置" > commit_message.txt
             echo "" >> commit_message.txt
-            echo "KV 命名空间 ID: $KV_NAMESPACE_ID" >> commit_message.txt
+            echo "KV 命名空间已更新" >> commit_message.txt
             echo "更新时间: $CURRENT_TIME" >> commit_message.txt
             echo "部署运行: #$RUN_NUMBER" >> commit_message.txt
             echo "" >> commit_message.txt
