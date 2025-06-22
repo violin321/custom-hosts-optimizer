@@ -390,20 +390,3 @@ function init() {
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', init)
-
-    if (e.target.closest(".response-area.collapsed")) {
-      const collapseBtn = e.target
-        .closest(".response-area")
-        .querySelector(".response-collapse-btn")
-      if (collapseBtn) {
-        toggleCollapse(collapseBtn)
-      }
-    }
-  })
-}
-
-// 确保 DOM 完全加载后再执行
-document.addEventListener("DOMContentLoaded", () => {
-  loadHosts()
-  setupEventListeners()
-})
