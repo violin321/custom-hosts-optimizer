@@ -68,11 +68,11 @@ jobs:
           
           # 检查现有的 KV 命名空间
           echo "📋 列出现有的 KV 命名空间..."
-          pnpm exec wrangler kv:namespace list
+          pnpm exec wrangler kv namespace list
           
           # 尝试创建 custom_hosts 命名空间
           echo "🆕 创建 custom_hosts KV 命名空间..."
-          KV_OUTPUT=$(pnpm exec wrangler kv:namespace create "custom_hosts" 2>&1)
+          KV_OUTPUT=$(pnpm exec wrangler kv namespace create "custom_hosts" 2>&1)
           echo "$KV_OUTPUT"
           
           # 提取新的 KV ID
@@ -93,6 +93,7 @@ jobs:
             fi
           else
             echo "⚠️ 可能 KV 命名空间已存在或创建失败"
+            echo "💡 尝试检查现有命名空间是否可用..."
           fi
 
       - name: Create KV namespace (if needed)
@@ -101,7 +102,7 @@ jobs:
           echo "🔍 检查是否需要创建额外的 KV 命名空间..."
           if [ "${{ secrets.CREATE_NEW_KV }}" = "true" ]; then
             echo "🆕 创建额外的 github_hosts KV 命名空间..."
-            pnpm exec wrangler kv:namespace create "github_hosts"
+            pnpm exec wrangler kv namespace create "github_hosts"
           else
             echo "⏭️ 跳过额外 KV 命名空间创建"
           fi
