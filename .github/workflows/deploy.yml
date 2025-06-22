@@ -40,15 +40,29 @@ jobs:
           fi
           echo "✅ CLOUDFLARE_API_TOKEN 已设置"
           
-          # 验证 API Token 权限
+          # 验证用户信息
+          echo "👤 验证用户信息..."
           pnpm exec wrangler whoami || {
-            echo "❌ API Token 验证失败，请检查权限设置"
-            echo "📖 需要的权限："
-            echo "   - Account: Cloudflare Workers:Edit"
-            echo "   - User: User:Read" 
-            echo "   - Zone: Zone:Read (如果使用自定义域名)"
+            echo "❌ 无法获取用户信息"
             exit 1
           }
+          
+          # 验证账户权限
+          echo "🏢 验证账户权限..."
+          pnpm exec wrangler kv:namespace list --preview false 2>/dev/null || {
+            echo "❌ API Token 缺少必要的 Workers 权限"
+            echo "📖 请确保 API Token 具有以下权限："
+            echo "   ✅ Account: Cloudflare Workers:Edit"
+            echo "   ✅ Account: Account:Read"
+            echo "   ✅ User: User:Read"
+            echo "   ✅ Zone: Zone:Read (如果使用自定义域名)"
+            echo ""
+            echo "🔗 访问以下链接重新配置 Token："
+            echo "   https://dash.cloudflare.com/profile/api-tokens"
+            exit 1
+          }
+          
+          echo "✅ API Token 权限验证通过"
 
       - name: Create KV namespace (if needed)
         run: |
@@ -61,7 +75,24 @@ jobs:
       - name: Deploy to Cloudflare Workers
         run: |
           echo "🚀 开始部署到 Cloudflare Workers..."
-          pnpm run deploy
+          
+          # 尝试部署，如果失败则提供详细的错误信息
+          if ! pnpm run deploy; then
+            echo ""
+            echo "❌ 部署失败！"
+            echo "🔧 常见解决方案："
+            echo "1. 检查 API Token 权限是否包含："
+            echo "   - Account: Cloudflare Workers:Edit"
+            echo "   - Account: Account:Read" 
+            echo "   - User: User:Read"
+            echo "2. 确认 wrangler.toml 中的配置正确"
+            echo "3. 检查是否有足够的 Workers 订阅配额"
+            echo ""
+            echo "🔗 API Token 配置: https://dash.cloudflare.com/profile/api-tokens"
+            exit 1
+          fi
+          
+          echo "✅ 部署成功！"
 
       - name: Set secrets
         run: |
