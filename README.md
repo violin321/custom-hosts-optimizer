@@ -39,10 +39,53 @@
 
 Fork 仓库后享受自动化部署：
 
-1. **Fork 仓库到您的 GitHub 账户**
-2. **配置 Secrets**（在仓库 Settings > Secrets > Actions）：
-   - `CLOUDFLARE_API_TOKEN` - Cloudflare API Token
-3. **推送代码即可自动部署**
+#### 步骤 1：Fork 仓库
+点击仓库右上角的 "Fork" 按钮，将仓库 Fork 到您的 GitHub 账户。
+
+#### 步骤 2：获取 Cloudflare API Token
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 点击右上角头像 → "My Profile" 
+3. 切换到 "API Tokens" 标签页
+4. 点击 "Create Token"
+5. 使用 "Edit Cloudflare Workers" 模板或自定义权限：
+   - **权限**：`Account:Cloudflare Workers:Edit`, `Zone:Zone Settings:Read`, `Zone:Zone:Read`
+   - **账户资源**：包含您的账户
+   - **区域资源**：包含所有区域（或特定区域）
+6. 点击 "Continue to summary" 然后 "Create Token"
+7. **复制生成的 Token**（只显示一次）
+
+#### 步骤 3：配置 GitHub Secrets
+1. 进入您 Fork 的仓库
+2. 点击 "Settings" → "Secrets and variables" → "Actions"
+3. 点击 "New repository secret"
+4. 添加以下 Secret：
+   - **Name**: `CLOUDFLARE_API_TOKEN`
+   - **Value**: 粘贴步骤 2 中复制的 Token
+
+#### 步骤 4：创建 KV 命名空间（重要）
+1. 在 Cloudflare Dashboard 进入 "Workers & Pages"
+2. 点击右侧的 "KV" 
+3. 点击 "Create a namespace"
+4. 命名空间名称：`custom-hosts` 或其他名称
+5. 点击 "Add"
+6. **复制创建的命名空间 ID**
+
+#### 步骤 5：配置 wrangler.toml
+1. 在您的 Fork 仓库中编辑 `wrangler.toml`
+2. 将 `YOUR_KV_NAMESPACE_ID` 替换为步骤 4 中的实际 ID：
+   ```toml
+   [[kv_namespaces]]
+   binding = "custom_hosts"
+   id = "your-actual-kv-namespace-id"  # 替换这里
+   preview_id = "your-actual-kv-namespace-id"  # 替换这里
+   ```
+
+#### 步骤 6：触发部署
+推送任何更改到 main 分支即可自动部署：
+```bash
+git commit --allow-empty -m "触发自动部署"
+git push origin main
+```
 
 ### 手动部署
 
@@ -159,6 +202,57 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 - **定时任务**：每小时自动更新 DNS 记录
 - **权限控制**：管理后台地址即 API Key，简化配置
 
+## 🔧 故障排除
+
+### 常见部署问题
+
+#### 1. GitHub Actions 失败："Unable to authenticate request"
+**原因**：未配置 `CLOUDFLARE_API_TOKEN` Secret  
+**解决**：按照上述步骤 2-3 配置 Cloudflare API Token
+
+#### 2. 部署成功但访问报错："KV namespace not found"
+**原因**：未创建 KV 命名空间或 ID 配置错误  
+**解决**：按照上述步骤 4-5 创建和配置 KV 命名空间
+
+#### 3. API 调用返回 403 错误
+**原因**：API Key 不正确  
+**解决**：使用管理后台地址（去掉开头的 `/`）作为 API Key
+
+#### 4. 自定义域名无法添加
+**原因**：域名格式错误或网络问题  
+**解决**：确保域名格式正确（如 `example.com`），检查网络连接
+
+### 获取帮助
+
+- 📖 查看 [Issues](https://github.com/Yan-nian/custom-hosts-optimizer/issues) 获取解决方案
+- 🐛 报告 Bug 或请求功能
+- 💬 参与讨论和交流
+
+## 部署指南
+
+### 自定义管理后台地址（推荐）
+
+默认管理后台地址：`/admin-x7k9m3q2`，建议修改为自定义路径提高安全性。
+
+1. **Fork 仓库并修改代码**
+   - 编辑 `src/index.ts`，搜索 `admin-x7k9m3q2` 并替换为你的自定义路径
+   - 同时修改 `adminPathAsApiKey` 变量
+
+2. **部署到 Cloudflare**
+   ```bash
+   git clone https://github.com/your-username/custom-hosts-optimizer.git
+   cd custom-hosts-optimizer
+   pnpm install
+   npx wrangler login
+   pnpm run deploy
+   ```
+
+### 配置 KV 存储
+
+1. 在 Cloudflare Dashboard 创建 KV 命名空间
+2. 修改 `wrangler.toml` 中的 KV ID
+3. 重新部署
+
 ## 🤝 贡献
 
 欢迎提交 Issues 和 Pull Requests！
@@ -166,44 +260,6 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 ## 📄 许可证
 
 本项目采用 [MIT 许可证](LICENSE)。
-
-您可以使用以下方法生成安全路径：
-
-```bash
-# 方法 1：使用 openssl
-echo "/admin-$(openssl rand -hex 8)"
-
-# 方法 2：使用 uuidgen（macOS/Linux）
-echo "/mgmt-$(uuidgen | tr '[:upper:]' '[:lower:]' | cut -d'-' -f1)"
-```
-
-### 定期更换策略
-
-#### 建议更换频率
-
-- **高安全需求**：每月更换
-- **中等安全需求**：每季度更换
-- **低安全需求**：每半年更换
-
-#### 更换流程
-
-1. 生成新的安全路径
-2. 修改源代码（三处位置）
-3. 重新部署应用
-4. 更新书签和文档
-5. 通知相关人员
-
-### 注意事项
-
-#### 修改前备份
-
-```bash
-# 备份当前配置
-cp src/index.ts src/index.ts.backup
-
-# 记录当前后台地址
-echo "当前后台地址: /admin-x7k9m3q2" > admin_path_backup.txt
-```
 
 #### 避免常见错误
 
