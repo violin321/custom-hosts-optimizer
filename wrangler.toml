@@ -25,6 +25,19 @@ preview_id = "YOUR_KV_NAMESPACE_ID"  # 替换为预览环境的 KV ID
 enabled = true
 head_sampling_rate = 1
 
+# 预览环境配置
+[env.preview]
+name = "custom-hosts-optimizer-preview"
+# 预览环境可以使用不同的 KV 命名空间
+[[env.preview.kv_namespaces]]
+binding = "custom_hosts"
+id = "YOUR_PREVIEW_KV_NAMESPACE_ID"  # 预览环境专用的 KV 命名空间
+
+# 预览环境变量
+[env.preview.vars]
+ADMIN_USERNAME = "admin"
+# 预览环境可以使用不同的配置
+
 # 定时任务配置 - 参考 TinsFox/github-hosts，每60分钟执行一次（避免过频繁更新）
 [triggers]
 crons = ["0 */1 * * *"]

@@ -20,7 +20,7 @@ import { Bindings } from "./types"
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// API 验证中间件 - 使用后台地址作为验证
+// API 验证中间件 - 使用后台地址作为 API Key
 const apiAuth = async (c: any, next: any) => {
   const path = c.req.path
   
@@ -31,8 +31,7 @@ const apiAuth = async (c: any, next: any) => {
     '/api/optimize/',
     '/api/reset',
     '/api/cache/refresh',
-    '/api/cache',
-    '/api/system/' // 系统配置 API 也需要验证
+    '/api/cache'
   ]
   
   // 主页刷新功能允许访问的API（限制权限）
@@ -44,33 +43,24 @@ const apiAuth = async (c: any, next: any) => {
   // 检查是否是需要保护的 API
   const isProtectedAPI = protectedPaths.some(protectedPath => 
     path.startsWith(protectedPath) && 
-    (c.req.method === 'POST' || c.req.method === 'DELETE' || c.req.method === 'PUT' || 
-     (path.startsWith('/api/system/') && c.req.method === 'GET')) // 系统配置的 GET 也需要验证
+    (c.req.method === 'POST' || c.req.method === 'DELETE' || c.req.method === 'PUT')
   )
   
   if (isProtectedAPI) {
-    // 获取系统配置
-    const systemConfig = await c.env.custom_hosts.get("system_config", {
-      type: "json",
-    }) as any || {}
-    
-    const configuredAdminPath = systemConfig.adminPath || "/admin-x7k9m3q2"
-    const configuredApiKey = systemConfig.apiKey || c.env.API_KEY
+    // 使用默认管理后台地址作为 API Key（去掉开头的 / ）
+    const adminPathAsApiKey = "admin-x7k9m3q2"
     
     // 检查 Referer 头，确保请求来自管理后台
     const referer = c.req.header('referer') || c.req.header('Referer')
-    const origin = c.req.header('origin') || c.req.header('Origin')
     
-    // 获取当前域名
-    const host = c.req.header('host')
-    
-    // 验证请求来源 - 使用配置的管理后台地址
-    const isValidReferer = referer && referer.includes(configuredAdminPath)
-    const isValidOrigin = origin && host && origin.includes(host)
-    
-    // API Key 验证（包括特殊的主页刷新Key）
+    // API Key 验证 - 使用管理后台地址作为验证密钥
     const apiKey = c.req.header('x-api-key') || c.req.query('key')
-    const isValidApiKey = !configuredApiKey || apiKey === configuredApiKey
+    
+    // 验证请求来源 - 检查是否从管理后台访问
+    const isValidReferer = referer && referer.includes(`/${adminPathAsApiKey}`)
+    
+    // 验证 API Key - 使用管理后台地址（不含 / ）
+    const isValidApiKey = apiKey === adminPathAsApiKey
     
     // 特殊处理：主页刷新专用API Key，只允许访问特定的API
     const isMainPageRefreshKey = apiKey === 'main-page-refresh'
@@ -91,12 +81,12 @@ const apiAuth = async (c: any, next: any) => {
       }
       console.log(`主页刷新Key访问已验证: ${path}`)
     } else if (!isValidReferer && !isValidApiKey) {
-      console.log(`API 访问被拒绝: ${path}, referer: ${referer}, expected admin path: ${configuredAdminPath}`)
+      console.log(`API 访问被拒绝: ${path}, referer: ${referer}, expected admin path: /${adminPathAsApiKey}`)
       return c.json({ 
-        error: 'Access denied. Please use the admin panel to manage APIs.',
+        error: 'Access denied. Please use the admin panel or correct API key.',
         code: 'ADMIN_ACCESS_REQUIRED',
-        hint: `Visit ${configuredAdminPath} to access management features`,
-        adminPath: configuredAdminPath
+        hint: `Visit /${adminPathAsApiKey} to access management features or use the admin path as API key`,
+        apiKeyHint: `Use "${adminPathAsApiKey}" as your API key`
       }, 403)
     } else {
       console.log(`API 访问已验证: ${path}`)
@@ -405,17 +395,11 @@ admin.get("/", async (c) => {
         <!-- 系统设置 -->
         <div class="card">
             <h3>⚙️ 系统设置</h3>
-            <div>
-                <div class="form-group">
-                    <label for="api-key">API Key:</label>
-                    <input type="password" id="api-key" placeholder="输入新的 API Key" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                    <small style="color: #718096;">用于外部 API 调用验证</small>
-                </div>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-info" onclick="updateApiKey()">🔑 更新 API Key</button>
-                    <button class="btn btn-success" onclick="generateApiKey()">🎲 生成随机 Key</button>
-                    <button class="btn btn-primary" onclick="showApiKey()">👁️ 显示当前 Key</button>
-                </div>
+            <div class="alert" style="background: #e6f3ff; color: #0066cc; border: 1px solid #b3d9ff; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+                <h4>🔑 API Key 说明</h4>
+                <p><strong>API Key 已简化</strong>：现在使用管理后台地址作为 API Key，无需额外配置。</p>
+                <p><strong>当前 API Key</strong>：<code>admin-x7k9m3q2</code></p>
+                <p><strong>使用方法</strong>：在外部调用 API 时，使用上述值作为 API Key 参数。</p>
             </div>
         </div>
 
@@ -656,84 +640,11 @@ admin.get("/", async (c) => {
             }
         }
 
-        // 生成随机 API Key
-        function generateApiKey() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-            let result = '';
-            for (let i = 0; i < 32; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            document.getElementById('api-key').value = result;
-            showAlert('已生成随机 API Key，请点击"更新 API Key"保存');
-        }
-
-        // 显示当前 API Key
-        async function showApiKey() {
-            try {
-                const response = await fetch('/api/system/config');
-                const config = await response.json();
-                if (response.ok && config.apiKey) {
-                    const keyField = document.getElementById('api-key');
-                    keyField.type = 'text';
-                    keyField.value = config.apiKey;
-                    setTimeout(() => {
-                        keyField.type = 'password';
-                    }, 3000);
-                    showAlert('当前 API Key 已显示，3秒后自动隐藏');
-                } else {
-                    showAlert('未设置 API Key 或获取失败', 'error');
-                }
-            } catch (error) {
-                showAlert('获取 API Key 失败: ' + error.message, 'error');
-            }
-        }
-
-        // 更新 API Key
-        async function updateApiKey() {
-            const newKey = document.getElementById('api-key').value.trim();
-            if (!newKey) {
-                showAlert('请输入新的 API Key', 'error');
-                return;
-            }
-
-            if (newKey.length < 16) {
-                showAlert('API Key 长度至少需要 16 个字符', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/system/api-key', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ apiKey: newKey })
-                });
-
-                if (response.ok) {
-                    showAlert('API Key 更新成功');
-                    document.getElementById('api-key').value = '';
-                } else {
-                    const error = await response.json();
-                    showAlert(error.error || 'API Key 更新失败', 'error');
-                }
-            } catch (error) {
-                showAlert('API Key 更新失败: ' + error.message, 'error');
-            }
-        }
-
-
-
         // 加载系统配置
         async function loadSystemConfig() {
-            try {
-                const response = await fetch('/api/system/config');
-                const config = await response.json();
-                if (response.ok) {
-                    // 显示 API Key 状态
-                    if (config.hasApiKey) {
-                        document.getElementById('api-key').placeholder = '***已设置***';
-                    }
-                }
-            } catch (error) {
+            // API Key 现在使用管理后台地址，无需额外配置
+            console.log('API Key 已简化为使用管理后台地址：admin-x7k9m3q2');
+        }
                 console.error('加载系统配置失败:', error);
             }
         }
@@ -1264,68 +1175,9 @@ app.delete("/api/cache", async (c) => {
   }
 })
 
-// 系统配置管理 API
-app.get("/api/system/config", async (c) => {
-  try {
-    const config = await c.env.custom_hosts.get("system_config", {
-      type: "json",
-    }) as any
-
-    const currentConfig = config || {}
-    
-    return c.json({
-      adminPath: currentConfig.adminPath || "/admin-x7k9m3q2",
-      apiKey: currentConfig.apiKey ? "***已设置***" : null,
-      hasApiKey: !!currentConfig.apiKey,
-      lastUpdated: currentConfig.lastUpdated || null
-    })
-  } catch (error) {
-    console.error("Error getting system config:", error)
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
-  }
-})
-
-app.put("/api/system/api-key", async (c) => {
-  try {
-    const body = await c.req.json()
-    const { apiKey } = body
-
-    if (!apiKey || typeof apiKey !== "string") {
-      return c.json({ error: "API Key is required" }, 400)
-    }
-
-    if (apiKey.length < 16) {
-      return c.json({ error: "API Key must be at least 16 characters long" }, 400)
-    }
-
-    // 获取现有配置
-    const existingConfig = await c.env.custom_hosts.get("system_config", {
-      type: "json",
-    }) as any || {}
-
-    // 更新配置
-    const newConfig = {
-      ...existingConfig,
-      apiKey,
-      lastUpdated: new Date().toISOString()
-    }
-
-    await c.env.custom_hosts.put("system_config", JSON.stringify(newConfig))
-
-    return c.json({ 
-      message: "API Key updated successfully",
-      lastUpdated: newConfig.lastUpdated
-    })
-  } catch (error) {
-    console.error("Error updating API Key:", error)
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
-  }
-})
-
-
 
 // 管理后台路由
-app.route("/admin", admin.use("*", adminAuth))
+app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
 // 域名查询路由
 app.get("*", async (c) => {

@@ -18,8 +18,9 @@
 - ⚡ **智能 IP 优选** - 自动测试响应时间，选择最快 IP
 - 🎯 **现代化界面** - 全新的选项卡式管理界面
 - 🔧 **完整 API** - RESTful API 支持所有功能
-- 🛠️ **管理后台** - 受密码保护的管理员界面
-- 🔒 **权限控制** - 灵活的 API Key 权限管理
+- 🛠️ **管理后台** - 安全的管理员界面
+- 🔒 **权限控制** - 使用管理后台地址作为 API Key
+- 🔄 **自动部署** - GitHub Actions 集成，推送代码自动部署
 
 ## 特性
 
@@ -32,6 +33,7 @@
 - 🎯 自定义域名 IP 优选
 - 🧠 智能响应时间检测
 - 🔐 安全的权限控制系统
+- 🔄 GitHub Actions 自动化部署
 
 ## 快速开始
 
@@ -46,6 +48,24 @@
 2. 授权 GitHub 访问
 3. 选择 Cloudflare 账户
 4. 等待自动部署完成
+
+### 🔄 自动部署（GitHub Actions）
+
+Fork 仓库后享受自动化部署体验：
+
+1. **Fork 仓库到您的 GitHub 账户**
+2. **配置 Secrets**（在仓库 Settings > Secrets and variables > Actions）：
+   - `CLOUDFLARE_API_TOKEN` - Cloudflare API Token
+   - `CLOUDFLARE_ACCOUNT_ID` - Cloudflare 账户 ID
+3. **推送代码即可自动部署**
+
+**自动化特性**：
+- ✅ 推送到 main 分支自动部署到生产环境
+- ✅ Pull Request 自动创建预览部署
+- ✅ 部署状态检查和通知
+- ✅ 预览 URL 自动评论到 PR
+
+详细配置请参考：[自动部署指南](#自动部署配置)
 
 ### 手动部署
 
@@ -125,7 +145,11 @@ https://your-worker-url.workers.dev/admin-x7k9m3q2
 - 📝 批量导入域名
 - 🔄 一键域名优选
 - 🗑️ 删除和清空操作
-- 🔧 系统配置管理（API Key 管理）
+
+**API Key 说明**：
+- � **简化的 API Key**：使用管理后台地址作为 API Key
+- 🔒 **默认 API Key**：`admin-x7k9m3q2`（与管理后台地址相同）
+- 🛡️ **安全性**：自定义管理后台地址即自动更换 API Key
 
 **重要提示**：
 - 管理后台地址在部署时配置，如需修改请重新部署
@@ -138,7 +162,7 @@ https://your-worker-url.workers.dev/admin-x7k9m3q2
 #### 添加自定义域名
 
 ```bash
-curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=YOUR_API_KEY" \
+curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=admin-x7k9m3q2" \
   -H "Content-Type: application/json" \
   -d '{"domain": "example.com", "description": "我的网站"}'
 ```
@@ -146,7 +170,7 @@ curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=YOUR_AP
 #### 优选域名 IP
 
 ```bash
-curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=YOUR_API_KEY"
+curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=admin-x7k9m3q2"
 ```
 
 #### 获取优选后的 hosts
@@ -156,6 +180,48 @@ curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=Y
 curl "https://your-worker-url.workers.dev/hosts?optimize=true&custom=true"
 ```
 
+## 🔑 API Key 说明
+
+### 简化设计
+
+为了简化配置和提高安全性，本项目采用了创新的 API Key 设计：
+
+**核心原理**：
+- 🔗 **管理后台地址即 API Key**：使用管理后台的路径（不含 `/`）作为 API Key
+- 🔒 **默认 API Key**：`admin-x7k9m3q2`
+- 🛡️ **自动安全**：自定义管理后台地址时，API Key 自动随之变更
+
+### 使用方法
+
+#### 默认配置下的 API 调用
+```bash
+# 添加自定义域名
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=admin-x7k9m3q2" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+
+# 优选域名 IP
+curl -X POST "https://your-worker.workers.dev/api/optimize/example.com?key=admin-x7k9m3q2"
+```
+
+#### 自定义后台地址后
+如果您将管理后台地址修改为 `/secure-panel-abc123`，那么：
+- 新的 API Key 变为：`secure-panel-abc123`
+- 所有 API 调用需要使用新的 Key
+
+### 安全优势
+
+1. **无需额外配置**：部署后即可使用，无需设置复杂的 API Key
+2. **自动同步**：修改管理后台地址自动更新 API Key
+3. **知者可用**：只有知道管理后台地址的人才能使用 API
+4. **简化管理**：减少了密钥管理的复杂性
+
+### 兼容性说明
+
+- 📱 **主页刷新**：主页的刷新按钮使用特殊 Key（`main-page-refresh`），仅可访问优选和缓存刷新功能
+- 🔧 **管理后台**：从管理后台发起的操作会自动验证来源，无需额外认证
+- 🌐 **外部调用**：需要使用当前的管理后台地址作为 API Key
+
 ## 📋 配置
 
 ### 环境变量
@@ -164,7 +230,7 @@ curl "https://your-worker-url.workers.dev/hosts?optimize=true&custom=true"
 
 | 变量名 | 描述 | 默认值 | 必需 |
 |--------|------|--------|------|
-| `API_KEY` | API 访问密钥 | 无 | 否 |
+| `API_KEY` | API 访问密钥（已简化为使用管理后台地址） | `admin-x7k9m3q2` | 否 |
 
 ### 自定义域名列表
 
@@ -213,20 +279,20 @@ export const GITHUB_URLS = [
 ### 企业内网优化
 为企业内部服务域名选择最优 IP：
 ```bash
-curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=API_KEY" \
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=admin-x7k9m3q2" \
   -d '{"domain": "internal.company.com", "description": "内部服务"}'
 ```
 
 ### CDN 节点优选
 为 CDN 域名选择最快的边缘节点：
 ```bash
-curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=API_KEY"
+curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=admin-x7k9m3q2"
 ```
 
 ### 游戏加速
 为游戏服务器选择低延迟 IP：
 ```bash
-curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=API_KEY" \
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=admin-x7k9m3q2" \
   -d '{"domain": "game-server.com", "description": "游戏服务器"}'
 ```
 
@@ -252,7 +318,7 @@ curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=API_KEY" \
 
 ### 环境变量
 
-- `API_KEY` - 管理 API 的密钥（必需）
+- `API_KEY` - 现在自动使用管理后台地址（简化配置）
 - `ENABLE_OPTIMIZATION` - 定时任务是否启用优选（可选）
 
 ### wrangler.toml 配置
@@ -406,6 +472,15 @@ git push origin main
 3. **重新部署**：使用您修改后的代码进行部署
 
 4. **访问新地址**：`https://your-domain.workers.dev/your-secret-admin`
+5. **更新 API Key**：新的 API Key 变为 `your-secret-admin`（不含 `/`）
+
+**API Key 自动更新**：
+```bash
+# 修改后台地址为 /secure-panel-abc123 后
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=secure-panel-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+```
 
 **安全建议**：
 - 使用复杂且不易猜测的路径（如：`/mgmt-abc123xyz`）
@@ -421,10 +496,213 @@ git push origin main
 
 #### 🔑 API Key 配置
 
-部署后请立即通过管理后台设置安全的 API Key：
+**重要**：API Key 现在已简化为使用管理后台地址：
 
-1. 访问管理后台
-2. 在"系统设置"中设置复杂的 API Key
-3. 使用 API Key 进行外部调用验证
+1. **默认 API Key**：`admin-x7k9m3q2`
+2. **自定义后**：如果您将管理后台改为 `/my-admin-panel`，API Key 即为 `my-admin-panel`
+3. **无需额外设置**：API Key 与管理后台地址自动同步，简化了配置流程
 
-### 🎯 管理后台功能
+**使用示例**：
+```bash
+# 使用默认 API Key
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=admin-x7k9m3q2"
+
+# 自定义后台地址后的 API Key
+curl -X POST "https://your-worker.workers.dev/api/custom-domains?key=my-admin-panel"
+```
+
+## 🔄 自动部署配置
+
+### GitHub Actions 自动部署
+
+本项目已配置 GitHub Actions，可以实现：
+
+#### 🚀 主要特性
+
+1. **自动部署** - 推送代码到 main 分支自动部署到生产环境
+2. **预览部署** - Pull Request 自动创建预览环境
+3. **状态检查** - 显示部署状态和结果
+4. **评论通知** - 在 PR 中自动评论预览链接
+
+#### 🛠️ 配置步骤
+
+##### 1. 获取 Cloudflare 凭据
+
+**API Token:**
+1. 访问 [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. 点击 "Create Token"
+3. 使用 "Custom token" 模板
+4. 配置权限：
+   - Account: `Cloudflare Workers:Edit`
+   - Zone: `Zone:Read` (如果使用自定义域名)
+5. 复制生成的 Token
+
+**Account ID:**
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 在右侧边栏找到 "Account ID"
+3. 复制 Account ID
+
+##### 2. 配置 GitHub Secrets
+
+在您的 GitHub 仓库中：
+
+1. 进入 `Settings` > `Secrets and variables` > `Actions`
+2. 点击 `New repository secret`
+3. 添加以下 Secrets：
+
+| Secret 名称 | 值 | 说明 |
+|------------|----|----|
+| `CLOUDFLARE_API_TOKEN` | 您的 API Token | 用于 Cloudflare API 认证 |
+| `CLOUDFLARE_ACCOUNT_ID` | 您的 Account ID | Cloudflare 账户标识 |
+
+##### 3. 触发部署
+
+配置完成后，以下操作会自动触发部署：
+
+- **推送到 main 分支** → 自动部署到生产环境
+- **创建 Pull Request** → 自动创建预览部署
+- **手动触发** → 在 Actions 页面手动运行
+
+#### 📋 部署工作流程
+
+```yaml
+# 生产环境部署
+on:
+  push:
+    branches: [ main ]
+
+# 预览环境部署  
+on:
+  pull_request:
+    branches: [ main ]
+
+# 手动触发
+workflow_dispatch:
+```
+
+#### 🔍 监控部署
+
+1. **查看部署状态**：
+   - 进入仓库的 `Actions` 页面
+   - 查看工作流运行状态
+
+2. **部署成功通知**：
+   - 生产部署：检查 Actions 输出获取 Worker URL
+   - 预览部署：自动在 PR 中评论预览链接
+
+3. **故障排除**：
+   ```bash
+   # 常见问题检查
+   - API Token 权限是否正确
+   - Account ID 是否匹配
+   - wrangler.toml 配置是否正确
+   ```
+
+#### ⚙️ 自定义配置
+
+如需自定义部署行为，编辑 `.github/workflows/deploy.yml`：
+
+**自定义触发条件:**
+```yaml
+on:
+  push:
+    branches: [ main, develop ]  # 添加更多分支
+    paths:
+      - 'src/**'  # 仅当源码变化时触发
+      - 'wrangler.toml'
+```
+
+**添加环境变量:**
+```yaml
+env:
+  NODE_ENV: production
+  CUSTOM_VAR: ${{ secrets.CUSTOM_VAR }}
+```
+
+**多环境部署:**
+```yaml
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    # 部署到测试环境
+    
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    # 部署到生产环境
+```
+
+#### 🔒 安全最佳实践
+
+1. **Secrets 管理**：
+   - 仅添加必要的 Secrets
+   - 定期轮换 API Token
+   - 使用最小权限原则
+
+2. **分支保护**：
+   - 启用分支保护规则
+   - 要求 PR 审核
+   - 要求状态检查通过
+
+3. **环境保护**：
+   ```yaml
+   environment: production
+   # 可添加审批流程
+   ```
+
+#### 🚨 常见问题
+
+**Q: 部署失败，提示权限不足**
+A: 检查 API Token 权限，确保包含 `Cloudflare Workers:Edit`
+
+**Q: 找不到 Account ID**  
+A: 在 Cloudflare Dashboard 右侧边栏查找，或访问任意域名管理页面查看
+
+**Q: 预览部署没有评论链接**
+A: 检查 GitHub Actions 是否有仓库写入权限
+
+**Q: 部署成功但无法访问**
+A: 检查 Worker 是否正确绑定域名和 KV 命名空间
+
+#### 💡 高级功能
+
+**Slack 通知集成:**
+```yaml
+- name: Notify Slack
+  if: success()
+  uses: 8398a7/action-slack@v3
+  with:
+    status: success
+    webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+```
+
+**部署回滚:**
+```bash
+# 手动回滚到上一版本
+wrangler rollback
+
+# 或指定版本
+wrangler rollback --version-id <version-id>
+```
+
+**性能监控:**
+- 在部署后自动运行性能测试
+- 集成 Lighthouse CI
+- 监控 Worker 响应时间
+
+### 📈 部署统计
+
+启用自动部署后，您可以在以下位置查看部署信息：
+
+- **GitHub Actions** - 部署历史和日志
+- **Cloudflare Dashboard** - Worker 部署版本
+- **PR 评论** - 预览环境链接
+- **Status Checks** - 部署状态检查
+
+### 🎯 下一步
+
+设置完自动部署后，建议：
+
+1. **自定义管理后台地址** - 参考 [配置指南](ADMIN_PATH_CONFIG.md)
+2. **配置自定义域名** - 绑定您的域名
+3. **设置监控告警** - 监控 Worker 健康状态
+4. **优化缓存策略** - 根据使用情况调整缓存

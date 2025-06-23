@@ -1,168 +1,383 @@
-# GitHub Actions 自动部署配置
+# GitHub Actions 自动部署指南
 
-这个文档说明如何使用 GitHub Actions 自动部署到 Cloudflare Workers。
+本指南详细说明如何配置 GitHub Actions 来实现 Cloudflare Workers 的自动部署。
 
-## 1. 设置 GitHub Secrets
+## 🎯 功能概述
 
-在你的 GitHub 仓库中，进入 Settings > Secrets and variables > Actions，添加以下 secrets：
+### 自动化特性
 
-### 必需的 Secrets
+- ✅ **自动部署** - 推送到 main 分支自动部署到生产环境
+- ✅ **预览部署** - Pull Request 自动创建预览环境  
+- ✅ **状态检查** - 部署状态显示在 GitHub 检查中
+- ✅ **评论通知** - 预览链接自动评论到 PR
+- ✅ **手动触发** - 支持手动执行部署
+- ✅ **多环境** - 支持生产和预览环境
 
-#### `CLOUDFLARE_API_TOKEN`
-- **描述**: Cloudflare API Token，用于部署权限
-- **获取方式**:
-  1. 访问 https://dash.cloudflare.com/profile/api-tokens
-  2. 点击 "Create Token" 
-  3. 选择 "Custom token"
-  4. 设置权限：
-     - Account: `Cloudflare Workers:Edit`
-     - Zone: `Zone:Read` (如果使用自定义域名)
-     - Zone: `Zone Settings:Read` (如果使用自定义域名)
-  5. 设置账户资源：包含你的账户
-  6. 如果使用自定义域名，设置区域资源
-  7. 创建并复制 token
+## 🛠️ 快速开始
 
-#### `WORKER_API_KEY`
-- **描述**: Worker 应用的 API Key，用于管理自定义域名
-- **设置**: 输入一个安全的随机字符串，例如：`your-secure-random-key-123`
+### 步骤 1: Fork 仓库
 
-### 可选的 Secrets
+1. 点击仓库页面右上角的 "Fork" 按钮
+2. 选择您的 GitHub 账户
+3. 等待 Fork 完成
 
-#### `ENABLE_OPTIMIZATION`
-- **描述**: 是否在定时任务中启用 IP 优选功能
-- **值**: `true` 或 `false`
-- **默认**: 如果不设置，默认为 `false`
+### 步骤 2: 获取 Cloudflare 凭据
 
-#### `CREATE_NEW_KV`
-- **描述**: 是否创建新的 KV 命名空间
-- **值**: `true` 或 `false`
-- **使用场景**: 第一次部署时设置为 `true`
+#### API Token
 
-## 2. 更新 KV 命名空间 ID
+1. 访问 [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. 点击 "Create Token"
+3. 选择 "Custom token" 模板
+4. 配置权限：
+   ```
+   Account: Cloudflare Workers:Edit
+   Zone: Zone:Read (可选，如果使用自定义域名)
+   ```
+5. 账户资源：选择您的账户
+6. 区域资源：选择您的域名（如果有）
+7. 点击 "Continue to summary" 然后 "Create Token"
+8. **复制并安全保存生成的 Token**
 
-如果你创建了新的 KV 命名空间，需要更新 `wrangler.toml` 文件：
+#### Account ID
 
-1. 在 GitHub Actions 运行日志中找到新创建的 KV 命名空间 ID
-2. 更新 `wrangler.toml` 文件中的 `id` 字段
-3. 提交并推送更改
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 在右侧边栏找到 "Account ID"
+3. 复制 Account ID
 
-## 3. 触发部署
+### 步骤 3: 配置 GitHub Secrets
 
-### 自动部署
-- 推送到 `main` 或 `master` 分支时自动触发
-- 创建 Pull Request 时也会触发（但不会实际部署 secrets）
+1. 进入您 Fork 的仓库
+2. 点击 `Settings` 选项卡
+3. 在左侧菜单中选择 `Secrets and variables` > `Actions`
+4. 点击 `New repository secret`
+5. 添加以下两个 Secrets：
 
-### 手动部署
-1. 进入 GitHub 仓库的 Actions 页面
+#### Secret 1: CLOUDFLARE_API_TOKEN
+- **Name**: `CLOUDFLARE_API_TOKEN`
+- **Secret**: 粘贴您在步骤2中获取的 API Token
+
+#### Secret 2: CLOUDFLARE_ACCOUNT_ID  
+- **Name**: `CLOUDFLARE_ACCOUNT_ID`
+- **Secret**: 粘贴您的 Cloudflare Account ID
+
+### 步骤 4: 配置 KV 命名空间
+
+在第一次部署前，需要创建 KV 命名空间：
+
+```bash
+# 本地配置（如果需要）
+npx wrangler kv:namespace create "custom_hosts"
+npx wrangler kv:namespace create "custom_hosts" --preview
+```
+
+更新 `wrangler.toml` 中的 KV 命名空间 ID。
+
+### 步骤 5: 触发首次部署
+
+#### 方法 1: 推送代码
+```bash
+git commit --allow-empty -m "触发首次部署"
+git push origin main
+```
+
+#### 方法 2: 手动触发
+1. 进入仓库的 `Actions` 页面
 2. 选择 "Deploy to Cloudflare Workers" 工作流
 3. 点击 "Run workflow"
 4. 选择分支并点击 "Run workflow"
 
-## 4. 验证部署
+## 📋 工作流详解
 
-部署成功后：
+### 生产环境部署
 
-1. 检查 GitHub Actions 日志确认无错误
-2. 访问你的 Worker URL（在日志中显示）
-3. 测试基本功能：
-   ```bash
-   curl https://your-worker.your-subdomain.workers.dev/hosts
-   ```
-4. 测试管理 API：
-   ```bash
-   curl "https://your-worker.your-subdomain.workers.dev/api/custom-domains?key=YOUR_API_KEY"
-   ```
+**触发条件:**
+- 推送到 `main` 或 `master` 分支
+- 手动触发
 
-## 5. 自定义域名配置
+**部署流程:**
+1. 检出代码
+2. 设置 Node.js 环境
+3. 安装依赖
+4. 使用 Wrangler 部署到生产环境
 
-如果要使用自定义域名：
+### 预览环境部署
 
-1. 在 Cloudflare 控制台中添加域名到 Workers
-2. 或者在 `wrangler.toml` 中配置：
-   ```toml
-   [env.production]
-   routes = [
-     { pattern = "your-domain.com/*", custom_domain = true }
-   ]
-   ```
+**触发条件:**
+- 创建或更新 Pull Request
 
-## 6. 环境管理
+**部署流程:**
+1. 检出 PR 代码
+2. 部署到预览环境
+3. 在 PR 中评论预览链接
 
-### 多环境部署
-可以配置不同的环境（staging, production）：
-
-```toml
-[env.staging]
-name = "github-hosts-staging"
-vars = { ENABLE_OPTIMIZATION = "true" }
-
-[env.production]
-name = "github-hosts-production"
-vars = { ENABLE_OPTIMIZATION = "false" }
-```
-
-然后在 GitHub Actions 中指定环境：
-```bash
-pnpm exec wrangler deploy --env production
-```
-
-## 7. 监控和维护
+## 🔍 监控和调试
 
 ### 查看部署状态
-- GitHub Actions 页面显示部署历史
-- Cloudflare 控制台显示 Worker 状态
 
-### 更新 Secrets
-当需要更新 API Key 或其他配置时：
-1. 在 GitHub Secrets 中更新值
-2. 重新运行 GitHub Actions 工作流
+1. **GitHub Actions 页面**
+   - 进入仓库的 `Actions` 页面
+   - 查看工作流运行历史和日志
 
-### 回滚
-如果需要回滚到之前的版本：
-1. 在 GitHub 中恢复到之前的提交
-2. 重新触发部署
+2. **部署检查**
+   - PR 和提交会显示部署状态检查
+   - 绿色勾号表示部署成功
+   - 红色 X 表示部署失败
 
-## 8. 故障排除
+3. **Cloudflare Dashboard**
+   - 查看 Worker 部署版本
+   - 监控流量和性能
 
-### 常见错误
+### 调试部署失败
 
-#### 权限错误
-- 检查 `CLOUDFLARE_API_TOKEN` 是否有正确的权限
-- 确保 token 没有过期
+#### 常见错误和解决方案
 
-#### KV 命名空间错误
-- 确保 `wrangler.toml` 中的 KV ID 正确
-- 检查命名空间是否存在于正确的账户中
+**1. API Token 权限不足**
+```
+Error: Authentication error
+```
+**解决方案**: 检查 API Token 权限，确保包含 `Cloudflare Workers:Edit`
 
-#### Secrets 设置失败
-- 确保 Worker 已成功部署
-- 检查 API Token 权限
+**2. Account ID 错误**
+```
+Error: Account ID not found
+```  
+**解决方案**: 验证 `CLOUDFLARE_ACCOUNT_ID` Secret 是否正确
 
-### 调试技巧
-1. 查看 GitHub Actions 的详细日志
-2. 使用 `wrangler tail` 查看 Worker 日志
-3. 在 Cloudflare 控制台检查 Worker 状态
+**3. KV 命名空间不存在**
+```
+Error: KV namespace not found
+```
+**解决方案**: 创建 KV 命名空间并更新 `wrangler.toml`
 
-## 9. 安全最佳实践
+**4. 依赖安装失败**
+```
+Error: npm install failed
+```
+**解决方案**: 检查 `package.json` 和网络连接
 
-1. **API Token 安全**
-   - 定期轮换 Cloudflare API Token
-   - 使用最小权限原则
-   - 监控 token 使用情况
+### 查看详细日志
 
-2. **Worker API Key**
-   - 使用强随机密码
-   - 定期更新
-   - 限制访问来源（如果需要）
+1. 点击失败的工作流运行
+2. 展开失败的步骤
+3. 查看详细错误信息
+4. 根据错误信息进行修复
 
-3. **代码安全**
-   - 不要在代码中硬编码敏感信息
-   - 定期更新依赖
-   - 使用 Dependabot 监控安全漏洞
+## ⚙️ 高级配置
 
-## 10. 成本优化
+### 自定义部署行为
 
-- 监控 Workers 使用量
-- 合理设置定时任务频率
-- 使用缓存减少 KV 读写
-- 考虑使用 Cloudflare 的免费套餐限制
+编辑 `.github/workflows/deploy.yml` 来自定义部署：
+
+#### 1. 修改触发条件
+
+```yaml
+on:
+  push:
+    branches: [ main, develop ]  # 支持多个分支
+    paths:
+      - 'src/**'                # 仅当源码改变时触发
+      - 'wrangler.toml'
+      - 'package.json'
+```
+
+#### 2. 添加环境变量
+
+```yaml
+env:
+  NODE_ENV: production
+  CUSTOM_CONFIG: ${{ secrets.CUSTOM_CONFIG }}
+```
+
+#### 3. 多环境支持
+
+```yaml
+jobs:
+  deploy-staging:
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Deploy to Staging
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --env staging
+
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to Production
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+```
+
+### 集成通知
+
+#### Slack 通知
+
+```yaml
+- name: Notify Slack
+  if: always()
+  uses: 8398a7/action-slack@v3
+  with:
+    status: ${{ job.status }}
+    webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+    message: |
+      部署状态: ${{ job.status }}
+      提交: ${{ github.sha }}
+      分支: ${{ github.ref }}
+```
+
+#### 企业微信通知
+
+```yaml
+- name: Notify WeChat Work
+  if: failure()
+  run: |
+    curl -X POST "${{ secrets.WECHAT_WEBHOOK }}" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "msgtype": "text",
+        "text": {
+          "content": "🚨 部署失败\n仓库: ${{ github.repository }}\n分支: ${{ github.ref }}\n提交: ${{ github.sha }}"
+        }
+      }'
+```
+
+### 性能优化
+
+#### 1. 缓存依赖
+
+```yaml
+- name: Cache dependencies
+  uses: actions/cache@v3
+  with:
+    path: ~/.npm
+    key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+    restore-keys: |
+      ${{ runner.os }}-node-
+```
+
+#### 2. 并行构建
+
+```yaml
+strategy:
+  matrix:
+    node-version: [18, 20]
+```
+
+#### 3. 条件部署
+
+```yaml
+- name: Deploy only if changed
+  if: contains(github.event.head_commit.message, '[deploy]')
+```
+
+## 🔒 安全最佳实践
+
+### 1. Secrets 管理
+
+- ✅ 仅添加必要的 Secrets
+- ✅ 使用有意义的 Secret 名称
+- ✅ 定期轮换 API Tokens
+- ✅ 遵循最小权限原则
+
+### 2. 分支保护
+
+在仓库设置中配置分支保护：
+
+1. 进入 `Settings` > `Branches`
+2. 添加分支保护规则
+3. 配置：
+   - ✅ Require status checks to pass
+   - ✅ Require pull request reviews
+   - ✅ Restrict pushes
+
+### 3. 环境保护
+
+```yaml
+environment: 
+  name: production
+  protection_rules:
+    required_reviewers: 1
+```
+
+### 4. 审计日志
+
+定期检查：
+- GitHub Actions 运行历史
+- Cloudflare 部署日志
+- API Token 使用记录
+
+## 📊 监控和分析
+
+### 部署指标
+
+跟踪以下关键指标：
+- ✅ 部署成功率
+- ✅ 部署时间
+- ✅ 故障恢复时间
+- ✅ 代码变更频率
+
+### 设置监控
+
+1. **GitHub Insights**
+   - 查看 Actions 使用情况
+   - 分析部署频率
+
+2. **Cloudflare Analytics**
+   - 监控 Worker 性能
+   - 查看请求统计
+
+3. **第三方工具**
+   - Sentry 错误监控
+   - Datadog 性能监控
+
+## 🆘 故障排除
+
+### 快速诊断清单
+
+- [ ] GitHub Secrets 是否正确配置
+- [ ] Cloudflare API Token 权限是否充足
+- [ ] Account ID 是否匹配
+- [ ] KV 命名空间是否存在
+- [ ] wrangler.toml 配置是否正确
+- [ ] 网络连接是否正常
+
+### 常用调试命令
+
+```bash
+# 本地测试部署
+npx wrangler dev
+
+# 检查配置
+npx wrangler whoami
+
+# 列出 KV 命名空间
+npx wrangler kv:namespace list
+
+# 查看 Worker 日志
+npx wrangler tail
+```
+
+### 获取帮助
+
+如果遇到问题：
+
+1. 查看 [GitHub Actions 文档](https://docs.github.com/en/actions)
+2. 查看 [Cloudflare Workers 文档](https://developers.cloudflare.com/workers/)
+3. 在仓库中提交 Issue
+4. 查看社区讨论
+
+## 📚 相关资源
+
+- [Cloudflare Wrangler Action](https://github.com/cloudflare/wrangler-action)
+- [GitHub Actions 语法](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
+- [Cloudflare Workers 文档](https://developers.cloudflare.com/workers/)
+- [自定义域名配置](https://developers.cloudflare.com/workers/platform/custom-domains/)
+
+---
+
+通过遵循本指南，您可以轻松设置完整的自动化部署流程，享受现代化的 CI/CD 体验！
