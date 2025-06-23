@@ -1325,7 +1325,7 @@ app.put("/api/system/api-key", async (c) => {
 
 
 // 管理后台路由
-app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
+app.route("/admin", admin.use("*", adminAuth))
 
 // 域名查询路由
 app.get("*", async (c) => {
