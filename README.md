@@ -116,7 +116,7 @@ sudo curl -fsSL https://github.com/Yan-nian/custom-host/releases/download/v1.0.0
 访问受密码保护的管理后台进行可视化管理：
 
 ```
-https://your-worker-url.workers.dev/admin
+https://your-worker-url.workers.dev/admin-x7k9m3q2
 ```
 
 **默认账户**：
@@ -129,6 +129,11 @@ https://your-worker-url.workers.dev/admin
 - 📝 批量导入域名
 - 🔄 一键域名优选
 - 🗑️ 删除和清空操作
+- 🔧 系统配置管理（API Key、管理后台地址等）
+
+**重要提示**：
+- 如果您在管理后台中更新了管理后台地址，需要重新部署服务才能生效
+- 更新后台地址后，记录新地址并立即进行重新部署
 
 详细配置请参考：[管理后台配置指南](ADMIN_GUIDE.md)
 
@@ -304,3 +309,74 @@ id = "your-kv-namespace-id"
 ## 📄 许可证
 
 本项目采用 [MIT 许可证](LICENSE)。
+
+## 🔄 重新部署
+
+在某些情况下，您可能需要重新部署服务，例如：
+
+### 何时需要重新部署
+
+1. **更新管理后台地址后** - 必须重新部署才能生效
+2. **修改系统配置后** - 某些配置更改需要重启服务
+3. **更新代码后** - 获取最新功能和修复
+4. **环境变量更改后** - 新的环境变量需要重新部署生效
+
+### 重新部署方法
+
+#### 一键部署用户
+
+如果您使用的是一键部署：
+
+1. **访问 Cloudflare Dashboard**
+   - 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+   - 进入 Workers & Pages 
+
+2. **找到您的 Worker**
+   - 在 Workers 列表中找到您的服务（通常名为 `custom-hosts-optimizer`）
+
+3. **重新部署**
+   - 点击 Worker 名称进入详情页
+   - 点击 "Deploy" 或 "Quick edit" 
+   - 点击 "Save and Deploy" 重新部署
+
+#### 手动部署用户
+
+如果您使用的是手动部署：
+
+```bash
+# 进入项目目录
+cd custom-hosts-optimizer
+
+# 拉取最新代码（可选）
+git pull origin main
+
+# 重新部署
+npm run deploy
+```
+
+#### 使用 GitHub Actions（如果配置了）
+
+```bash
+# 推送任意更改触发自动部署
+git commit --allow-empty -m "触发重新部署"
+git push origin main
+```
+
+### 验证部署
+
+重新部署后，请验证：
+
+1. **访问新的管理后台地址**（如果有更改）
+2. **检查功能是否正常**
+3. **查看 Worker 日志**确认没有错误
+
+### 常见问题
+
+- **Q: 更新管理后台地址后无法访问？**
+  - A: 确保已重新部署，并使用新地址访问
+
+- **Q: 重新部署后数据丢失了？**
+  - A: 数据存储在 KV 中，重新部署不会影响数据
+
+- **Q: 部署失败怎么办？**
+  - A: 检查 Cloudflare 控制台的错误日志，确认配置正确
