@@ -62,13 +62,21 @@ Fork 仓库后享受自动化部署：
 5. 点击 "Add"
 6. **复制命名空间 ID**（在列表中点击命名空间查看）
 
-#### 步骤 4：配置 GitHub Secrets
+#### 步骤 4：配置 GitHub Secrets（重要）
 1. 进入您 Fork 的仓库
 2. 点击 "Settings" → "Secrets and variables" → "Actions"
 3. 点击 "New repository secret"
-4. 添加以下 Secrets：
-   - **Name**: `CLOUDFLARE_API_TOKEN` | **Value**: 步骤 2 中的 API Token
-   - **Name**: `KV_NAMESPACE_ID` | **Value**: 步骤 3 中的命名空间 ID
+4. **必须添加以下两个 Secrets**：
+   
+   **第一个 Secret：**
+   - **Name**: `CLOUDFLARE_API_TOKEN`
+   - **Value**: 步骤 2 中复制的 API Token
+   
+   **第二个 Secret：**
+   - **Name**: `KV_NAMESPACE_ID`
+   - **Value**: 步骤 3 中复制的命名空间 ID
+
+⚠️ **注意**：两个 Secrets 都必须设置，否则自动部署会失败！
 6. **复制创建的命名空间 ID**
 
 #### 步骤 5：配置 KV Namespace（安全方式）
@@ -110,12 +118,20 @@ id = "your-actual-kv-namespace-id"
 preview_id = "your-actual-kv-namespace-id"
 ```
 
-#### 步骤 6：触发部署
+#### 步骤 6：验证配置
+在触发部署前，请确认：
+- ✅ GitHub Secrets 中已设置 `CLOUDFLARE_API_TOKEN`
+- ✅ GitHub Secrets 中已设置 `KV_NAMESPACE_ID`
+- ✅ 您选择了合适的 KV 配置方法（推荐方法一）
+
+#### 步骤 7：触发部署
 推送任何更改到 main 分支即可自动部署：
 ```bash
 git commit --allow-empty -m "触发自动部署"
 git push origin main
 ```
+
+🎯 **部署成功后**，访问 `https://your-worker-name.your-account.workers.dev` 查看您的服务！
 
 ### 手动部署
 
@@ -238,19 +254,27 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 
 #### 1. GitHub Actions 失败："Unable to authenticate request"
 **原因**：未配置 `CLOUDFLARE_API_TOKEN` Secret  
-**解决**：按照上述步骤 2-3 配置 Cloudflare API Token
+**解决**：按照步骤 2-4 配置 Cloudflare API Token
 
-#### 2. 部署成功但访问报错："KV namespace not found"
-**原因**：未创建 KV 命名空间或 ID 配置错误  
-**解决**：按照上述步骤 4-5 创建和配置 KV 命名空间
+#### 2. GitHub Actions 失败："KV namespace 'YOUR_KV_NAMESPACE_ID' is not valid"
+**原因**：未配置 `KV_NAMESPACE_ID` Secret  
+**解决**：按照步骤 3-4 创建 KV 命名空间并配置 Secret
 
-#### 3. API 调用返回 403 错误
+#### 3. 部署成功但访问报错："KV namespace not found"
+**原因**：KV 命名空间 ID 配置错误  
+**解决**：检查 Secret 中的 KV ID 是否与实际创建的命名空间 ID 一致
+
+#### 4. API 调用返回 403 错误
 **原因**：API Key 不正确  
-**解决**：使用管理后台地址（去掉开头的 `/`）作为 API Key
+**解决**：使用管理后台地址（去掉开头的 `/`）作为 API Key，默认是 `admin-x7k9m3q2`
 
-#### 4. 自定义域名无法添加
+#### 5. 自定义域名无法添加
 **原因**：域名格式错误或网络问题  
 **解决**：确保域名格式正确（如 `example.com`），检查网络连接
+
+#### 6. 本地开发时 KV 错误
+**原因**：本地环境未配置 KV  
+**解决**：创建 `.dev.vars` 文件并设置 `KV_NAMESPACE_ID=your-id`
 
 ### 获取帮助
 
