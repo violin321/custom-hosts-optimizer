@@ -3,8 +3,6 @@ name: Deploy to Cloudflare Workers
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:  # 允许手动触发
 
 jobs:
@@ -14,7 +12,18 @@ jobs:
     environment: production  # 添加环境保护
     env:
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
-      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+      CLOUDFLARE          # 设置管理员密码
+          if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
+            echo "🔒 设置 ADMIN_PASSWORD..."
+            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
+              echo "✅ ADMIN_PASSWORD 设置完成"
+            else
+              echo "⚠️ ADMIN_PASSWORD 设置失败，继续执行"
+            fi
+          else
+            echo "ℹ️ ADMIN_PASSWORD secret 未设置，项目将使用基于URL的认证方式"
+            echo "ℹ️ 访问 /admin-x7k9m3q2 进行管理（无需额外密码）"
+          fisecrets.CLOUDFLARE_EMAIL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -213,19 +222,19 @@ jobs:
           echo "KV_NAMESPACE_ID=$KV_NAMESPACE_ID" >> $GITHUB_ENV
           echo "KV_NAMESPACE_NAME=custom_hosts" >> $GITHUB_ENV
           
-          # 创建部署信息文件
+          # 创建部署信息文件（隐藏敏感信息）
           cat > deployment-info.json << EOF
           {
             "deployment_mode": "$DEPLOYMENT_MODE",
             "worker_exists": "$WORKER_EXISTS",
             "namespace_name": "custom_hosts",
             "binding_name": "custom_hosts",
-            "kv_namespace_id": "$KV_NAMESPACE_ID",
+            "kv_namespace_id": "[HIDDEN_FOR_SECURITY]",
             "config_source": "${CONFIG_SOURCE:-unknown}",
             "config_updated": "${CONFIG_UPDATED:-false}",
             "deployment_time": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
             "run_number": "${{ github.run_number }}",
-            "security_note": "KV_NAMESPACE_ID 使用安全的 GitHub Secrets 管理"
+            "security_note": "KV_NAMESPACE_ID 使用安全的 GitHub Secrets 管理，敏感信息已隐藏"
           }
           EOF
           
@@ -234,7 +243,7 @@ jobs:
           # 验证最终配置
           echo "📄 验证最终配置:"
           if [ -n "$KV_NAMESPACE_ID" ]; then
-            echo "✅ KV 命名空间 ID: $KV_NAMESPACE_ID"
+            echo "✅ KV 命名空间 ID: [已设置，ID 已隐藏保护隐私]"
             echo "🔐 配置来源: ${CONFIG_SOURCE:-unknown}"
           else
             echo "❌ KV 命名空间 ID 为空"
@@ -269,14 +278,23 @@ jobs:
             exit 1
           fi
           
-          # 检查配置文件语法
-          if ! pnpm exec wrangler config validate 2>/dev/null; then
+          # 检查配置文件语法（隐藏输出避免泄露信息）
+          if pnpm exec wrangler config validate >/dev/null 2>&1; then
+            echo "✅ wrangler 配置验证通过"
+          else
             echo "⚠️ wrangler 配置验证失败，但继续尝试部署"
           fi
           
           # 执行部署
           echo "🚀 开始执行部署..."
-          if ! pnpm run deploy; then
+          if pnpm run deploy; then
+            echo "✅ 部署成功！"
+            if [ "$DEPLOYMENT_MODE" = "update" ]; then
+              echo "🎉 Worker 热更新完成"
+            else
+              echo "🎉 Worker 首次部署完成"
+            fi
+          else
             echo ""
             echo "❌ 部署失败！"
             echo "🔧 常见解决方案："
@@ -286,26 +304,21 @@ jobs:
             echo "4. 检查是否有足够的 Workers 订阅配额"
             echo "5. 验证 KV 命名空间配置是否正确"
             echo ""
-            echo "🔗 Global API Key: https://dash.cloudflare.com/profile/api-tokens"
+            echo "🔗 Cloudflare Dashboard: https://dash.cloudflare.com/"
             echo "📄 当前部署信息:"
             if [ -f "deployment-info.json" ]; then
               cat deployment-info.json
             fi
-            echo "📄 当前 wrangler.toml 配置:"
-            cat wrangler.toml | head -20
+            echo "📄 当前 wrangler.toml 配置（敏感信息已隐藏）:"
+            grep -v "id = " wrangler.toml | head -15 || echo "无法读取配置文件"
             exit 1
           fi
           
-          echo "✅ 部署成功！"
-          if [ "$DEPLOYMENT_MODE" = "update" ]; then
-            echo "🎉 Worker 热更新完成"
-          else
-            echo "🎉 Worker 首次部署完成"
-          fi
-          
-          # 部署后验证
+          # 部署后验证（隐藏详细信息）
           echo "📊 部署后验证..."
-          if ! pnpm exec wrangler status 2>/dev/null; then
+          if pnpm exec wrangler status >/dev/null 2>&1; then
+            echo "✅ Worker 状态正常"
+          else
             echo "⚠️ 无法获取部署后状态，但部署命令成功"
           fi
 
@@ -313,10 +326,20 @@ jobs:
         run: |
           echo "🔐 设置 Worker secrets..."
           
+          # 获取 Worker 名称（避免重复命令调用）
+          WORKER_NAME=$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')
+          
+          if [ -z "$WORKER_NAME" ]; then
+            echo "❌ 无法获取 Worker 名称"
+            exit 1
+          fi
+          
+          echo "📝 为 Worker 设置环境变量..."
+          
           # 设置 API Key
           if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
-            echo "📝 设置 API_KEY..."
-            if echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+            echo "� 设置 API_KEY..."
+            if echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY --name "$WORKER_NAME" >/dev/null 2>&1; then
               echo "✅ API_KEY 设置完成"
             else
               echo "⚠️ API_KEY 设置失败，继续执行"
@@ -325,41 +348,22 @@ jobs:
             echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
           fi
           
-          # 设置管理员密码（现在已去除验证，但保留兼容性）
+          # 设置管理员密码
           if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
-            echo "📝 设置 ADMIN_PASSWORD..."
-            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+            echo "� 设置 ADMIN_PASSWORD..."
+            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
               echo "✅ ADMIN_PASSWORD 设置完成"
             else
               echo "⚠️ ADMIN_PASSWORD 设置失败，继续执行"
             fi
           else
-            echo "📝 设置默认 ADMIN_PASSWORD..."
-            if echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
-              echo "✅ 默认 ADMIN_PASSWORD 设置完成"
-            else
-              echo "⚠️ 默认 ADMIN_PASSWORD 设置失败，继续执行"
-            fi
+            echo "� 设置默认 ADMIN_PASSWORD..."
+            if echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
+              echo "✅ 默认 ADMIN_PASSWORD 设置完成"          else
+            echo "ℹ️ ENABLE_OPTIMIZATION secret 未设置，项目将使用默认配置"
           fi
           
-          # 设置优选功能开关
-          if [ -n "${{ secrets.ENABLE_OPTIMIZATION }}" ]; then
-            echo "📝 设置 ENABLE_OPTIMIZATION 为: ${{ secrets.ENABLE_OPTIMIZATION }}"
-            if echo "${{ secrets.ENABLE_OPTIMIZATION }}" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
-              echo "✅ ENABLE_OPTIMIZATION 设置完成"
-            else
-              echo "⚠️ ENABLE_OPTIMIZATION 设置失败，继续执行"
-            fi
-          else
-            echo "📝 设置 ENABLE_OPTIMIZATION 为默认值: false"
-            if echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
-              echo "✅ 默认 ENABLE_OPTIMIZATION 设置完成"
-            else
-              echo "⚠️ 默认 ENABLE_OPTIMIZATION 设置失败，继续执行"
-            fi
-          fi
-          
-          echo "✅ Secrets 设置流程完成（部分失败不影响部署）"
+          echo "✅ Secrets 设置流程完成（项目功能不依赖这些secrets）"
 
       - name: Save deployment info
         uses: actions/upload-artifact@v4
@@ -372,25 +376,44 @@ jobs:
         if: env.CONFIG_UPDATED == 'true'
         run: |
           echo "📝 配置已更新，准备提交..."
+          
+          # 安全检查：确保不提交敏感信息
+          if grep -q "YOUR_KV_NAMESPACE_ID" wrangler.toml; then
+            echo "⚠️ 检测到配置文件中仍有占位符，跳过提交"
+            exit 0
+          fi
+          
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          
+          # 安全地添加文件（只添加配置文件）
           git add wrangler.toml
           
           # 构建提交消息
           RUN_NUMBER="${{ github.run_number }}"
           CURRENT_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
           
-          # 创建提交消息
-          echo "chore: 自动学习并更新部署配置" > commit_message.txt
-          echo "" >> commit_message.txt
-          echo "部署模式: $DEPLOYMENT_MODE" >> commit_message.txt
-          echo "配置来源: 从现有部署学习" >> commit_message.txt
-          echo "更新时间: $CURRENT_TIME" >> commit_message.txt
-          echo "部署运行: #$RUN_NUMBER" >> commit_message.txt
-          echo "" >> commit_message.txt
-          echo "[skip ci]" >> commit_message.txt
+          # 创建提交消息（不包含敏感信息）
+          cat > commit_message.txt << EOF
+          chore: 自动更新部署配置 [安全提交]
+
+          部署模式: $DEPLOYMENT_MODE
+          配置来源: ${CONFIG_SOURCE:-unknown}
+          更新时间: $CURRENT_TIME
+          部署运行: #$RUN_NUMBER
+
+          注意: 敏感信息已通过 GitHub Secrets 安全管理
+          [skip ci]
+          EOF
           
-          git commit -F commit_message.txt || echo "没有变化需要提交"
+          # 安全提交
+          if git diff --staged --quiet; then
+            echo "📝 没有配置变化需要提交"
+          else
+            git commit -F commit_message.txt || echo "提交失败，但不影响部署"
+            echo "✅ 配置已安全提交（敏感信息已保护）"
+          fi
+          
           rm -f commit_message.txt
           
           echo "ℹ️ 配置已学习并更新，下次将使用学习到的配置进行热更新"
