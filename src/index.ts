@@ -781,6 +781,94 @@ app.post("/api/optimize/:domain", async (c) => {
   }
 })
 
+// 全域名优选 API - 用于主页立即刷新功能
+app.post("/api/optimize-all", async (c) => {
+  try {
+    console.log("开始执行全域名优选...")
+    
+    // 获取所有自定义域名
+    const customDomains = await getCustomDomains(c.env)
+    
+    if (!Array.isArray(customDomains) || customDomains.length === 0) {
+      return c.json({
+        message: "没有找到需要优选的自定义域名",
+        optimized: 0,
+        failed: 0,
+        results: []
+      })
+    }
+    
+    const results = []
+    const errors = []
+    let successCount = 0
+    
+    console.log(`找到 ${customDomains.length} 个自定义域名，开始优选...`)
+    
+    // 为每个域名执行优选
+    for (const domainData of customDomains) {
+      const domain = domainData.domain
+      
+      try {
+        console.log(`正在优选域名: ${domain}`)
+        
+        // 重新解析域名获取新的 IP
+        const newIp = await fetchIPFromMultipleDNS(domain)
+        
+        if (newIp) {
+          // 更新域名信息
+          const updateResult = await addCustomDomain(c.env, domain)
+          
+          if (updateResult) {
+            results.push({
+              domain,
+              status: "success",
+              oldIp: domainData.ip,
+              newIp: newIp,
+              updated: domainData.ip !== newIp
+            })
+            successCount++
+            console.log(`域名 ${domain} 优选成功: ${newIp}`)
+          } else {
+            errors.push({
+              domain,
+              error: "更新失败"
+            })
+            console.log(`域名 ${domain} 更新失败`)
+          }
+        } else {
+          errors.push({
+            domain,
+            error: "DNS解析失败"
+          })
+          console.log(`域名 ${domain} DNS解析失败`)
+        }
+      } catch (error) {
+        errors.push({
+          domain,
+          error: error instanceof Error ? error.message : "未知错误"
+        })
+        console.error(`域名 ${domain} 优选失败:`, error)
+      }
+    }
+    
+    console.log(`全域名优选完成: 成功 ${successCount} 个，失败 ${errors.length} 个`)
+    
+    return c.json({
+      message: `全域名优选完成: 成功 ${successCount} 个，失败 ${errors.length} 个`,
+      optimized: successCount,
+      failed: errors.length,
+      total: customDomains.length,
+      results,
+      errors
+    })
+  } catch (error) {
+    console.error("全域名优选失败:", error)
+    return c.json({
+      error: "全域名优选失败: " + (error instanceof Error ? error.message : String(error))
+    }, 500)
+  }
+})
+
 app.post("/api/reset", async (c) => {
   const newEntries = await resetHostsData(c.env)
 

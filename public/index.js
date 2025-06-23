@@ -299,33 +299,87 @@ function switchTab(tabName) {
   }
 }
 
+// 全域名优选函数 - 主页立即刷新功能
+async function optimizeAllDomains() {
+  const refreshBtn = document.getElementById('refreshHosts')
+  const originalText = refreshBtn ? refreshBtn.textContent : '立即优选刷新'
+  
+  try {
+    // 更新按钮状态
+    if (refreshBtn) {
+      refreshBtn.textContent = '正在优选...'
+      refreshBtn.disabled = true
+    }
+    
+    updateHostsStatus('正在执行全域名优选，请稍候...', 'updating')
+    showMessage('开始执行全域名优选，这可能需要一些时间...', 'info')
+    
+    // 调用全域名优选API
+    const response = await fetch(`${baseUrl}/api/optimize-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    const result = await response.json()
+    
+    if (response.ok) {
+      showMessage(
+        `全域名优选完成！成功优选 ${result.optimized} 个域名，失败 ${result.failed} 个`, 
+        'success'
+      )
+      
+      // 优选完成后重新加载hosts内容
+      setTimeout(() => {
+        loadHosts(true) // 强制刷新hosts内容
+      }, 1000)
+      
+    } else {
+      showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')
+      updateHostsStatus('全域名优选失败', 'error')
+    }
+    
+  } catch (error) {
+    console.error('全域名优选失败:', error)
+    showMessage(`全域名优选失败: ${error.message}`, 'error')
+    updateHostsStatus('全域名优选失败', 'error')
+  } finally {
+    // 恢复按钮状态
+    if (refreshBtn) {
+      refreshBtn.textContent = originalText
+      refreshBtn.disabled = false
+    }
+  }
+}
+
 // 加载自定义域名列表（已移至管理后台，此函数保留以防兼容性问题）
 async function loadCustomDomains() {
-  console.log('自定义域名管理功能已移至管理后台，请访问 /admin-x7k9m3q2 进行管理')
+  console.log('自定义域名管理功能已移至管理后台')
   return
 }
 
 // 添加自定义域名（已移至管理后台）
 async function addCustomDomain() {
-  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  showMessage('自定义域名管理功能已移至专用管理系统', 'info')
   return
 }
 
 // 批量添加自定义域名（已移至管理后台）
 async function addCustomDomainsBatch() {
-  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  showMessage('自定义域名管理功能已移至专用管理系统', 'info')
   return
 }
 
 // 删除自定义域名（已移至管理后台）
 async function removeDomain(domain) {
-  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  showMessage('自定义域名管理功能已移至专用管理系统', 'info')
   return
 }
 
 // 优选域名（保留此函数以防HTML中有调用）
 async function optimizeDomain(domain) {
-  showMessage('域名优选功能已移至管理后台，请访问管理后台进行操作', 'info')
+  showMessage('域名优选功能已集成到立即优选刷新中', 'info')
   return
 }
 
@@ -360,10 +414,10 @@ function setupEventListeners() {
     }
   })
   
-  // 刷新 hosts 按钮
+  // 刷新 hosts 按钮 - 执行全域名优选
   const refreshBtn = document.getElementById('refreshHosts')
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => loadHosts(true)) // 强制刷新
+    refreshBtn.addEventListener('click', () => optimizeAllDomains())
   }
 }
 
