@@ -58,14 +58,9 @@
 
   <!-- Hosts 文件选项卡 -->
   <div class="tab-content active" id="hosts-tab">
-    <h2>📋 当前 Hosts 内容</h2>
+    <h2>📋 当前 Hosts 内容（已启用IP优选和自定义域名）</h2>
     <div class="control-panel">
-      <label>
-        <input type="checkbox" id="optimizeToggle"> 启用 IP 优选（响应时间优化）
-      </label>
-      <label>
-        <input type="checkbox" id="customToggle" checked> 包含自定义域名
-      </label>
+      <!-- IP优选和自定义域名功能已默认启用 -->
       <button id="refreshHosts" class="btn btn-primary">刷新</button>
     </div>
     
@@ -83,7 +78,7 @@
         <h4>SwitchHosts 工具</h4>
         <p>推荐使用，可自动更新</p>
         <ul>
-          <li>URL: <code id="switchHostsUrl">https://github-hosts.tinsfox.com/hosts</code></li>
+          <li>URL: <code id="switchHostsUrl">https://custom-hosts-optimizer.1216443973.workers.dev/hosts</code></li>
           <li>更新间隔：1小时</li>
         </ul>
         <button class="copy-btn" data-copy="switchHostsUrl">复制 URL</button>

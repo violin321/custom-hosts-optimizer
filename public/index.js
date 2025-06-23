@@ -65,8 +65,9 @@ async function loadHosts() {
   try {
     hostsElement.textContent = "正在加载 hosts 内容..."
     
-    const optimize = document.getElementById('optimizeToggle')?.checked || false
-    const custom = document.getElementById('customToggle')?.checked !== false
+    // 默认启用 IP 优选和自定义域名功能
+    const optimize = true
+    const custom = true
     
     const params = new URLSearchParams()
     if (optimize) params.append('optimize', 'true')
@@ -368,17 +369,7 @@ function setupEventListeners() {
     refreshBtn.addEventListener('click', loadHosts)
   }
   
-  // 优化和自定义域名切换按钮
-  const optimizeToggle = document.getElementById('optimizeToggle')
-  const customToggle = document.getElementById('customToggle')
-  
-  if (optimizeToggle) {
-    optimizeToggle.addEventListener('change', loadHosts)
-  }
-  
-  if (customToggle) {
-    customToggle.addEventListener('change', loadHosts)
-  }
+  // IP优选和自定义域名功能已默认启用，无需切换按钮
   
   // 添加域名按钮
   const addDomainBtn = document.getElementById('addDomain')
