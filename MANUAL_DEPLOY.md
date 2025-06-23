@@ -158,6 +158,97 @@ export const DNS_PROVIDERS = [
 ]
 ```
 
+### 自定义管理后台地址
+
+为了安全考虑，建议您自定义管理后台的访问地址：
+
+#### 步骤 1：修改源代码
+
+1. **找到路由配置文件**
+   打开 `src/index.ts` 文件
+
+2. **查找管理后台路由**
+   搜索以下代码行：
+   ```typescript
+   // 管理后台路由
+   app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
+   ```
+
+3. **修改路径**
+   将 `/admin-x7k9m3q2` 替换为您的自定义路径：
+   ```typescript
+   // 管理后台路由 - 修改为您的自定义路径
+   app.route("/your-secret-admin-path", admin.use("*", adminAuth))
+   ```
+
+4. **查找域名查询路由排除**
+   在同一文件中，找到这行代码：
+   ```typescript
+   if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/admin-x7k9m3q2")) {
+   ```
+   
+   将其中的 `/admin-x7k9m3q2` 也修改为您的自定义路径：
+   ```typescript
+   if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/your-secret-admin-path")) {
+   ```
+
+#### 步骤 2：重新部署
+
+修改完成后，重新部署应用：
+
+```bash
+npm run deploy
+```
+
+#### 步骤 3：访问新地址
+
+部署成功后，使用新地址访问管理后台：
+```
+https://your-worker-url.workers.dev/your-secret-admin-path
+```
+
+#### 安全建议
+
+1. **使用复杂路径**
+   ```
+   ❌ 不好的例子：/admin, /manage, /backend
+   ✅ 好的例子：/admin-x7k9m3q2, /mgmt-abc123xyz, /secure-panel-456
+   ```
+
+2. **路径要求**
+   - 必须以 `/` 开头
+   - 建议包含随机字符
+   - 避免常见词汇
+   - 长度适中（10-20个字符）
+
+3. **定期更换**
+   - 建议每3-6个月更换一次
+   - 重要变更后立即更换
+   - 记录在安全的地方
+
+#### 示例完整修改
+
+假设您要将后台地址改为 `/secure-mgmt-789xyz`：
+
+**修改前：**
+```typescript
+// 管理后台路由
+app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
+
+// ...其他代码...
+
+if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/admin-x7k9m3q2")) {
+```
+
+**修改后：**
+```typescript
+// 管理后台路由
+app.route("/secure-mgmt-789xyz", admin.use("*", adminAuth))
+
+// ...其他代码...
+
+if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/secure-mgmt-789xyz")) {
+```
 ## 故障排除
 
 ### 常见问题
@@ -274,11 +365,11 @@ npm run deploy
 
 ### 自定义管理后台地址流程
 
-如需自定义管理后台地址：
+如需自定义管理后台地址，请按照上述"自定义管理后台地址"章节的详细步骤操作：
 
 1. **修改源代码**
-   - 在 `src/index.ts` 中查找管理后台路由配置
-   - 修改默认的管理后台路径
+   - 在 `src/index.ts` 中修改路由配置
+   - 更新两处代码：路由定义和路径排除
    - 确保路径复杂且安全
 
 2. **重新部署**
