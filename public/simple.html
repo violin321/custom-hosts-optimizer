@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>简化测试 - 优选自定义host</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .header { text-align: center; margin-bottom: 30px; }
+    .control-panel { margin: 20px 0; }
+    .btn { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    .btn:hover { background: #0056b3; }
+    .btn:disabled { background: #6c757d; cursor: not-allowed; }
+    .hosts-container { margin: 20px 0; }
+    .hosts-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    #hosts { background: #f8f9fa; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; font-family: monospace; white-space: pre-wrap; max-height: 400px; overflow: auto; }
+    .copy-btn { background: #28a745; }
+    .copy-btn:hover { background: #1e7e34; }
+    .status-text { color: #6c757d; font-size: 14px; }
+    .message { position: fixed; top: 20px; right: 20px; z-index: 1000; padding: 10px 15px; border-radius: 5px; color: white; }
+    .message.info { background: #17a2b8; }
+    .message.success { background: #28a745; }
+    .message.error { background: #dc3545; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>优选自定义host - 简化测试版</h1>
+    <p>测试主页功能的简化版本</p>
+  </div>
+
+  <div class="control-panel">
+    <button id="refreshHosts" class="btn">立即优选刷新</button>
+    <span id="hostsStatus" class="status-text">准备就绪</span>
+  </div>
+  
+  <div class="hosts-container">
+    <div class="hosts-header">
+      <span><strong>Hosts 文件内容</strong></span>
+      <button class="copy-btn btn" id="copyHosts">复制</button>
+    </div>
+    <pre id="hosts">正在加载 hosts 内容...</pre>
+  </div>
+
+  <div class="control-panel">
+    <h3>调试功能</h3>
+    <button class="btn" onclick="window.debugFunctions.loadHosts()">重新加载 Hosts</button>
+    <button class="btn" onclick="window.debugFunctions.optimizeAllDomains()">执行优选</button>
+    <button class="btn" onclick="window.debugFunctions.showMessage('测试消息', 'info')">测试消息</button>
+  </div>
+
+  <div class="control-panel">
+    <h3>SwitchHosts 工具</h3>
+    <p>URL: <code id="switchHostsUrl">加载中...</code></p>
+    <button class="copy-btn btn" data-copy="switchHostsUrl">复制 URL</button>
+  </div>
+
+  <script src="/simple.js"></script>
+</body>
+</html>
