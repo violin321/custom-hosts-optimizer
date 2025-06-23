@@ -4,14 +4,14 @@ compatibility_date = "2024-10-28"
 compatibility_flags = ["nodejs_compat"]
 assets = { directory = "public" }
 
-# KV 数据库绑定 - 请按照以下步骤配置：
-# 1. 在 Cloudflare Dashboard 创建 KV 命名空间
-# 2. 复制命名空间 ID
-# 3. 替换下面的 YOUR_KV_NAMESPACE_ID 为实际 ID
+# KV 数据库绑定 - 安全配置说明：
+# 方式1：GitHub Secrets（推荐） - 在仓库 Secrets 中设置 KV_NAMESPACE_ID
+# 方式2：本地环境变量 - 在 .dev.vars 文件中设置 KV_NAMESPACE_ID=your-id
+# 方式3：直接替换（仅私有仓库） - 将 YOUR_KV_NAMESPACE_ID 替换为实际 ID
 [[kv_namespaces]]
 binding = "custom_hosts"
-id = "YOUR_KV_NAMESPACE_ID"  # 🔴 必须替换为您的实际 KV 命名空间 ID
-preview_id = "YOUR_KV_NAMESPACE_ID"  # 🔴 必须替换为您的实际 KV 命名空间 ID
+id = "YOUR_KV_NAMESPACE_ID"  # 保持不变，由 wrangler 或 GitHub Actions 自动处理
+preview_id = "YOUR_KV_NAMESPACE_ID"  # 预览环境 KV ID
 
 # 定时任务配置 - 每小时更新一次 hosts
 [triggers]

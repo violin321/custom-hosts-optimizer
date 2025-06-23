@@ -54,31 +54,61 @@ Fork 仓库后享受自动化部署：
 6. 点击 "Continue to summary" 然后 "Create Token"
 7. **复制生成的 Token**（只显示一次）
 
-#### 步骤 3：配置 GitHub Secrets
-1. 进入您 Fork 的仓库
-2. 点击 "Settings" → "Secrets and variables" → "Actions"
-3. 点击 "New repository secret"
-4. 添加以下 Secret：
-   - **Name**: `CLOUDFLARE_API_TOKEN`
-   - **Value**: 粘贴步骤 2 中复制的 Token
-
-#### 步骤 4：创建 KV 命名空间（重要）
+#### 步骤 3：创建 KV 命名空间
 1. 在 Cloudflare Dashboard 进入 "Workers & Pages"
 2. 点击右侧的 "KV" 
 3. 点击 "Create a namespace"
 4. 命名空间名称：`custom-hosts` 或其他名称
 5. 点击 "Add"
+6. **复制命名空间 ID**（在列表中点击命名空间查看）
+
+#### 步骤 4：配置 GitHub Secrets
+1. 进入您 Fork 的仓库
+2. 点击 "Settings" → "Secrets and variables" → "Actions"
+3. 点击 "New repository secret"
+4. 添加以下 Secrets：
+   - **Name**: `CLOUDFLARE_API_TOKEN` | **Value**: 步骤 2 中的 API Token
+   - **Name**: `KV_NAMESPACE_ID` | **Value**: 步骤 3 中的命名空间 ID
 6. **复制创建的命名空间 ID**
 
-#### 步骤 5：配置 wrangler.toml
-1. 在您的 Fork 仓库中编辑 `wrangler.toml`
-2. 将 `YOUR_KV_NAMESPACE_ID` 替换为步骤 4 中的实际 ID：
+#### 步骤 5：配置 KV Namespace（安全方式）
+
+**⚠️ 安全提醒**：不要在公开仓库中直接暴露 KV Namespace ID
+
+**方法一：使用环境变量（推荐）**
+1. 在 GitHub Secrets 中添加：
+   - `KV_NAMESPACE_ID` = 您的 KV 命名空间 ID
+   - `KV_PREVIEW_ID` = 您的预览环境 KV ID（可选，通常与生产相同）
+
+2. 修改 `wrangler.toml`：
    ```toml
    [[kv_namespaces]]
    binding = "custom_hosts"
-   id = "your-actual-kv-namespace-id"  # 替换这里
-   preview_id = "your-actual-kv-namespace-id"  # 替换这里
+   id = "YOUR_KV_NAMESPACE_ID"  # 保持不变，由 wrangler 自动替换
+   preview_id = "YOUR_KV_NAMESPACE_ID"  # 保持不变
    ```
+
+**方法二：本地配置文件（Fork 后私有部署）**
+1. 创建 `.dev.vars` 文件（已在 .gitignore 中）：
+   ```
+   KV_NAMESPACE_ID=your-actual-kv-id
+   ```
+2. 在 `wrangler.toml` 中使用环境变量：
+   ```toml
+   [[kv_namespaces]]
+   binding = "custom_hosts"
+   id = "${KV_NAMESPACE_ID}"
+   preview_id = "${KV_NAMESPACE_ID}"
+   ```
+
+**方法三：直接替换（仅私有仓库）**
+如果您的 Fork 是私有仓库，可以直接替换：
+```toml
+[[kv_namespaces]]
+binding = "custom_hosts"
+id = "your-actual-kv-namespace-id"
+preview_id = "your-actual-kv-namespace-id"
+```
 
 #### 步骤 6：触发部署
 推送任何更改到 main 分支即可自动部署：
