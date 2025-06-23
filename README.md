@@ -113,15 +113,11 @@ sudo curl -fsSL https://github.com/Yan-nian/custom-host/releases/download/v1.0.0
 
 ### 🛠️ 管理后台（推荐）
 
-访问受密码保护的管理后台进行可视化管理：
+访问管理后台进行可视化管理：
 
 ```
 https://your-worker-url.workers.dev/admin-x7k9m3q2
 ```
-
-**默认账户**：
-- 用户名：`admin`
-- 密码：`admin123`
 
 **功能特性**：
 - 📊 统计仪表板
@@ -168,8 +164,6 @@ curl "https://your-worker-url.workers.dev/hosts?optimize=true&custom=true"
 
 | 变量名 | 描述 | 默认值 | 必需 |
 |--------|------|--------|------|
-| `ADMIN_USERNAME` | 管理后台用户名 | `admin` | 否 |
-| `ADMIN_PASSWORD` | 管理后台密码 | 无 | 推荐 |
 | `API_KEY` | API 访问密钥 | 无 | 否 |
 
 ### 自定义域名列表

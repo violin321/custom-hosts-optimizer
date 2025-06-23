@@ -81,13 +81,9 @@ preview_id = "你的预览KV命名空间ID"  # 替换为实际的预览 ID
 
 ### 4. 设置环境变量（可选）
 
-如果需要设置管理后台密码：
+如果需要设置 API Key：
 
 ```bash
-# 设置管理后台密码
-npx wrangler secret put ADMIN_PASSWORD
-# 输入你想要的密码
-
 # 如果需要设置 API Key
 npx wrangler secret put API_KEY
 # 输入你的 API Key
@@ -118,8 +114,6 @@ npm run deploy
 
 | 变量名 | 说明 | 默认值 | 是否必需 |
 |--------|------|--------|----------|
-| `ADMIN_USERNAME` | 管理后台用户名 | `admin` | 否 |
-| `ADMIN_PASSWORD` | 管理后台密码 | 无 | 推荐设置 |
 | `API_KEY` | API 访问密钥 | 无 | 否 |
 
 ### KV 命名空间

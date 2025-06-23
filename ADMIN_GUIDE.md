@@ -1,45 +1,32 @@
 # 🛠️ 管理后台配置指南
 
-本项目新增了受密码保护的管理后台，用于管理自定义域名配置。
+本项目提供了管理后台，用于管理自定义域名配置。
 
 ## 🔐 访问管理后台
 
 ### 访问地址
 ```
-https://your-worker-domain.workers.dev/admin
+https://your-worker-domain.workers.dev/admin-x7k9m3q2
 ```
 
-### 默认账户
-- **用户名**: `admin`
-- **密码**: `admin123` (首次部署后的默认密码)
+**注意**: 为了安全考虑，建议自定义管理后台地址。详细配置请参考 [管理后台地址配置指南](ADMIN_PATH_CONFIG.md)。
 
 ## 🛡️ 安全配置
 
-### 方式一：通过 GitHub Secrets 设置（推荐）
+### API Key 管理
 
-在 GitHub 仓库的 Settings > Secrets and variables > Actions 中添加：
+管理后台主要用于 API Key 的安全管理：
 
-1. **ADMIN_PASSWORD**
-   - 设置自定义的管理员密码
-   - 建议使用强密码，包含字母、数字和特殊字符
+1. **设置 API Key**
+   - 在管理后台的"系统设置"中设置复杂的 API Key
+   - 用于外部 API 调用验证
 
-### 方式二：通过 wrangler 命令行设置
+2. **生成随机 Key**
+   - 点击"生成随机 Key"自动生成安全的密钥
+   - 避免使用弱密钥
 
-```bash
-# 设置管理员密码
-wrangler secret put ADMIN_PASSWORD
-
-# 设置管理员用户名（可选，默认为 admin）
-wrangler secret put ADMIN_USERNAME
-```
-
-### 方式三：修改 wrangler.toml（不推荐用于生产环境）
-
-```toml
-[vars]
-ADMIN_USERNAME = "your-username"
-# 注意：密码应该使用 secret 设置，不要直接写在配置文件中
-```
+3. **显示当前 Key**
+   - 安全查看当前设置的 API Key
 
 ## 🎯 管理后台功能
 
@@ -92,26 +79,20 @@ cdn.example.com|CDN域名
    # 输入新的强密码
    ```
 
-### GitHub Actions 自动化部署
-
-如果使用 GitHub Actions 部署，系统会自动：
-- 检查是否设置了 `ADMIN_PASSWORD` secret
-- 如果未设置，使用默认密码 `admin123`
-- 如果已设置，使用自定义密码
-
 ## 🔒 安全最佳实践
 
-1. **修改默认密码**
-   - 立即修改默认密码
-   - 使用强密码策略
+1. **自定义管理后台地址**
+   - 修改默认的管理后台路径
+   - 使用复杂且不易猜测的路径
+   - 详见 [管理后台地址配置指南](ADMIN_PATH_CONFIG.md)
 
-2. **限制访问**
+2. **设置强 API Key**
+   - 在管理后台设置复杂的 API Key
+   - 定期更换 API Key
+
+3. **限制访问**
    - 只在可信网络环境下访问管理后台
-   - 定期更换管理员密码
-
-3. **监控访问**
-   - 关注 Worker 的访问日志
-   - 如发现异常访问及时处理
+   - 不要在公开场所分享管理地址
 
 4. **备份配置**
    - 定期导出自定义域名配置
@@ -121,13 +102,8 @@ cdn.example.com|CDN域名
 
 ### 无法访问管理后台
 1. 检查 Worker 是否部署成功
-2. 确认访问地址正确
+2. 确认访问地址正确（默认为 `/admin-x7k9m3q2`）
 3. 检查网络连接
-
-### 密码认证失败
-1. 确认用户名和密码正确
-2. 检查是否设置了自定义密码
-3. 尝试使用默认密码 `admin123`
 
 ### 功能异常
 1. 检查 KV 命名空间是否正确绑定
