@@ -39,7 +39,7 @@
 
 使用 Cloudflare Workers 一键部署，无需本地环境：
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-host)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-hosts-optimizer)
 
 **部署步骤**：
 1. 点击上方按钮
@@ -58,8 +58,8 @@
 #### 部署步骤
 1. **克隆仓库**
 ```bash
-git clone https://github.com/Yan-nian/custom-host.git
-cd custom-host
+git clone https://github.com/Yan-nian/custom-hosts-optimizer.git
+cd custom-hosts-optimizer
 ```
 
 2. **安装依赖并部署**
@@ -293,7 +293,7 @@ id = "your-kv-namespace-id"
 
 如果这个项目对你有帮助，请给它一个星标！
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Yan-nian/custom-host&type=Date)](https://star-history.com/#Yan-nian/custom-host&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=Yan-nian/custom-hosts-optimizer&type=Date)](https://star-history.com/#Yan-nian/custom-hosts-optimizer&Date)
 
 ## 🙏 鸣谢
 
