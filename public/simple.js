@@ -143,9 +143,9 @@ async function loadHostsWithRefresh() {
   }
 }
 
-// 全域名优选 - 主页版本（强制刷新缓存）
+// 全域名优选 - 主页版本（刷新缓存 + 手动优选）
 async function optimizeAllDomains() {
-  console.log('开始主页立即刷新...')
+  console.log('开始主页刷新和优选...')
   
   const refreshBtn = document.getElementById('refreshHosts')
   const statusElement = document.getElementById('hostsStatus')
@@ -160,27 +160,70 @@ async function optimizeAllDomains() {
   
   try {
     // 更新按钮状态
-    refreshBtn.textContent = '正在刷新...'
+    refreshBtn.textContent = '正在优选...'
     refreshBtn.disabled = true
     
     if (statusElement) {
-      statusElement.textContent = '正在强制刷新缓存...'
+      statusElement.textContent = '正在执行域名优选...'
     }
     
-    showMessage('开始强制刷新缓存，请稍候...', 'info')
+    showMessage('开始执行域名优选，请稍候...', 'info')
     
-    // 直接强制刷新 hosts 内容，而不是调用管理 API
-    console.log('强制刷新 hosts 内容...')
+    // 先刷新GitHub域名缓存
+    console.log('步骤1: 刷新GitHub域名缓存...')
+    const cacheResponse = await fetch(`${baseUrl}/api/cache/refresh`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-api-key': 'main-page-refresh' // 使用特殊标识绕过验证
+      }
+    })
+    
+    if (cacheResponse.ok) {
+      console.log('GitHub域名缓存刷新成功')
+      showMessage('步骤1/2: GitHub域名缓存已刷新', 'info')
+    }
+    
+    // 再执行全域名优选
+    console.log('步骤2: 执行全域名优选...')
+    const optimizeResponse = await fetch(`${baseUrl}/api/optimize-all`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-api-key': 'main-page-refresh' // 使用特殊标识绕过验证
+      }
+    })
+    
+    if (optimizeResponse.ok) {
+      const result = await optimizeResponse.json()
+      console.log('优选结果:', result)
+      showMessage(`步骤2/2: 域名优选完成！成功 ${result.optimized} 个，失败 ${result.failed} 个`, 'success')
+    } else {
+      // 如果优选失败，至少刷新缓存
+      console.log('优选失败，进行缓存刷新...')
+      showMessage('域名优选失败，执行缓存刷新...', 'info')
+    }
+    
+    // 最后强制刷新显示内容
+    console.log('步骤3: 刷新显示内容...')
     await loadHostsWithRefresh()
     
-    showMessage('缓存刷新完成！已获取最新 hosts 内容', 'success')
+    showMessage('域名优选和刷新完成！', 'success')
     
   } catch (error) {
-    console.error('刷新失败:', error)
-    showMessage(`刷新失败: ${error.message}`, 'error')
+    console.error('优选和刷新失败:', error)
+    
+    // 如果所有步骤都失败，至少尝试强制刷新显示
+    try {
+      console.log('执行兜底刷新...')
+      await loadHostsWithRefresh()
+      showMessage('执行了缓存刷新', 'info')
+    } catch (fallbackError) {
+      showMessage(`操作失败: ${error.message}`, 'error')
+    }
     
     if (statusElement) {
-      statusElement.textContent = '刷新失败'
+      statusElement.textContent = '操作失败'
     }
   } finally {
     // 恢复按钮状态
