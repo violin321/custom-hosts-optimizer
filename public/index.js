@@ -57,13 +57,46 @@ async function copyToClipboard(text, btn) {
   }
 }
 
+// 缓存 hosts 内容和更新时间
+let cachedHostsContent = null
+let lastHostsUpdate = null
+const HOSTS_CACHE_DURATION = 60 * 60 * 1000 // 1小时缓存
+
+// 更新状态显示
+function updateHostsStatus(message, type = 'info') {
+  const statusElement = document.getElementById('hostsStatus')
+  if (statusElement) {
+    statusElement.textContent = message
+    statusElement.className = `status-text ${type}`
+  }
+}
+
 // 加载 hosts 内容
-async function loadHosts() {
+async function loadHosts(forceRefresh = false) {
   const hostsElement = document.getElementById("hosts")
   if (!hostsElement) return
 
+  const now = Date.now()
+  
+  // 如果有缓存且未过期且不是强制刷新，使用缓存
+  if (!forceRefresh && cachedHostsContent && lastHostsUpdate && 
+      (now - lastHostsUpdate < HOSTS_CACHE_DURATION)) {
+    hostsElement.textContent = cachedHostsContent
+    const timeLeft = Math.ceil((HOSTS_CACHE_DURATION - (now - lastHostsUpdate)) / (60 * 1000))
+    updateHostsStatus(`使用缓存数据，${timeLeft}分钟后自动更新`, 'info')
+    return
+  }
+
   try {
-    hostsElement.textContent = "正在加载 hosts 内容..."
+    // 显示更新状态
+    updateHostsStatus('正在更新 hosts 数据...', 'updating')
+    
+    // 如果有缓存内容，先显示缓存，然后在后台更新
+    if (cachedHostsContent && !forceRefresh) {
+      hostsElement.textContent = cachedHostsContent
+    } else {
+      hostsElement.textContent = "正在加载 hosts 内容..."
+    }
     
     // 默认启用 IP 优选和自定义域名功能
     const optimize = true
@@ -77,9 +110,33 @@ async function loadHosts() {
     if (!response.ok) throw new Error("Failed to load hosts")
     
     const hostsContent = await response.text()
+    
+    // 更新缓存和显示内容
+    const isContentChanged = cachedHostsContent !== hostsContent
+    cachedHostsContent = hostsContent
+    lastHostsUpdate = now
     hostsElement.textContent = hostsContent
+    
+    // 更新状态
+    if (isContentChanged) {
+      updateHostsStatus('hosts 内容已更新', 'success')
+      setTimeout(() => {
+        updateHostsStatus('使用缓存数据，每小时自动更新', 'info')
+      }, 3000)
+    } else {
+      updateHostsStatus('使用缓存数据，每小时自动更新', 'info')
+    }
+    
+    // 如果是后台更新且内容有变化，显示提示
+    if (!forceRefresh && isContentChanged) {
+      showMessage('hosts 内容已更新', 'success')
+    }
   } catch (error) {
-    hostsElement.textContent = "加载 hosts 内容失败，请稍后重试"
+    // 如果有缓存，保持显示缓存内容
+    if (!cachedHostsContent) {
+      hostsElement.textContent = "加载 hosts 内容失败，请稍后重试"
+    }
+    updateHostsStatus('更新失败，使用缓存数据', 'error')
     console.error("Error loading hosts:", error)
     showMessage('加载失败，请稍后重试', 'error')
   }
@@ -103,7 +160,7 @@ function switchTab(tabName) {
   
   // 根据选项卡加载相应内容
   if (tabName === 'hosts') {
-    loadHosts()
+    loadHosts() // 使用缓存逻辑，不强制刷新
   } else if (tabName === 'custom') {
     loadCustomDomains()
   }
@@ -366,7 +423,7 @@ function setupEventListeners() {
   // 刷新 hosts 按钮
   const refreshBtn = document.getElementById('refreshHosts')
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', loadHosts)
+    refreshBtn.addEventListener('click', () => loadHosts(true)) // 强制刷新
   }
   
   // IP优选和自定义域名功能已默认启用，无需切换按钮
@@ -406,8 +463,15 @@ function init() {
   
   // 加载初始内容
   if (currentTab === 'hosts') {
-    loadHosts()
+    loadHosts() // 初始加载使用缓存逻辑
   }
+  
+  // 设置自动刷新定时器（每小时刷新一次）
+  setInterval(() => {
+    if (currentTab === 'hosts') {
+      loadHosts(true) // 定时强制刷新
+    }
+  }, 60 * 60 * 1000) // 1小时
 }
 
 // 页面加载完成后初始化

@@ -942,13 +942,17 @@ app.get("/debug", async (c) => {
     const hostsData = await fetchCustomDomainsData(c.env, true) // 使用优化模式
     const hostsDataNoOpt = await fetchCustomDomainsData(c.env, false) // 不使用优化模式
     
+    // 统计实际解析成功的域名数量（排除"未解析"的）
+    const resolvedWithOpt = hostsData.filter(([ip]) => ip !== '未解析')
+    const resolvedWithoutOpt = hostsDataNoOpt.filter(([ip]) => ip !== '未解析')
+    
     return c.json({
       stored_domains: Object.keys(customDomains),
       stored_count: Object.keys(customDomains).length,
       resolved_with_optimization: hostsData.map(([ip, domain]) => ({ domain, ip })),
       resolved_without_optimization: hostsDataNoOpt.map(([ip, domain]) => ({ domain, ip })),
-      resolved_count_opt: hostsData.length,
-      resolved_count_no_opt: hostsDataNoOpt.length
+      resolved_count_opt: resolvedWithOpt.length,
+      resolved_count_no_opt: resolvedWithoutOpt.length
     })
   } catch (error) {
     return c.json({ 

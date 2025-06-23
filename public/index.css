@@ -146,6 +146,29 @@ body {
   accent-color: var(--primary-color);
 }
 
+/* 状态文本 */
+.status-text {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-left: auto;
+  padding: 0.25rem 0.75rem;
+  background: var(--info-bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid #bfdbfe;
+}
+
+.status-text.updating {
+  color: var(--warning-color);
+  background: var(--warning-bg);
+  border-color: #fbbf24;
+}
+
+.status-text.success {
+  color: var(--success-color);
+  background: var(--success-bg);
+  border-color: #34d399;
+}
+
 /* 按钮样式 */
 .btn {
   padding: 0.75rem 1.5rem;

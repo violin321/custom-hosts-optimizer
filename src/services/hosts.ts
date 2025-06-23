@@ -201,7 +201,10 @@ export async function updateHostsData(
 }
 
 export function formatHostsFile(entries: HostEntry[]): string {
-  const content = entries
+  // 过滤掉解析失败的域名（IP为"未解析"的）
+  const validEntries = entries.filter(([ip]) => ip !== '未解析' && ip !== '0.0.0.0')
+  
+  const content = validEntries
     .map(([ip, domain]) => `${ip.padEnd(30)}${domain}`)
     .join("\n")
 
@@ -461,13 +464,10 @@ export async function fetchCustomDomainsData(env: Bindings, useOptimization: boo
         ip = await fetchIPFromIPAddress(domain)
       }
       
-      // 如果无法解析 IP，使用占位符但仍然包含域名
+      // 如果无法解析 IP，使用占位符表示未解析
       if (!ip) {
         console.warn(`Failed to resolve IP for domain: ${domain}`)
-        // 可以选择跳过或使用占位符 IP
-        // entries.push(['0.0.0.0', domain]) // 使用占位符
-        // 或者跳过该域名
-        continue
+        entries.push(['未解析', domain]) // 使用"未解析"占位符用于调试显示
       } else {
         entries.push([ip, domain])
       }
