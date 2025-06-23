@@ -35,55 +35,41 @@
 
 ## 快速开始
 
-### 使用公共服务
+### 🚀 一键部署（推荐）
 
-如果您只是想快速使用，可以直接使用已部署的公共服务。
+使用 Cloudflare Workers 一键部署，无需本地环境：
 
-### 自行部署
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-host)
 
-> **注意**: 要使用完整功能，建议自行部署到您的 Cloudflare Workers。
+**部署步骤**：
+1. 点击上方按钮
+2. 授权 GitHub 访问
+3. 选择 Cloudflare 账户
+4. 等待自动部署完成
+
+### 手动部署
+
+如果需要自定义配置，可以手动部署：
 
 #### 前置要求
-
 - Cloudflare 账户（免费账户即可）
-- Node.js 20+ 
-- Git
+- Node.js 20+ （仅手动部署需要）
 
 #### 部署步骤
-
 1. **克隆仓库**
 ```bash
 git clone https://github.com/Yan-nian/custom-host.git
 cd custom-host
 ```
 
-2. **安装依赖**
+2. **安装依赖并部署**
 ```bash
 npm install
-# 或使用 pnpm
-pnpm install
-```
-
-3. **配置 Cloudflare**
-```bash
-# 登录 Cloudflare
 npx wrangler login
-
-# 创建 KV 命名空间
-npx wrangler kv:namespace create "custom_hosts"
-npx wrangler kv:namespace create "custom_hosts" --preview
-```
-
-4. **更新配置**
-   - 将 KV 命名空间 ID 填入 `wrangler.toml`
-   - 可选：设置管理后台密码
-
-5. **部署应用**
-```bash
 npm run deploy
 ```
 
-> 详细部署说明请参考：[手动部署指南](MANUAL_DEPLOY.md)
+> 详细配置说明请参考：[手动部署指南](MANUAL_DEPLOY.md)
 
 ## 使用方法
 
@@ -313,56 +299,6 @@ id = "your-kv-namespace-id"
 - 感谢 Cloudflare 提供的强大平台
 - 感谢所有贡献者和用户的支持
 
----
-
-<div align="center">
-  <p>Made with ❤️ by <a href="https://github.com/TinsFox">TinsFox</a></p>
-  <p>如果这个项目对你有帮助，请考虑给个 ⭐️</p>
-</div>
-
-### 3. 手动更新
-
-1. 获取 hosts：访问 [https://github-hosts.tinsfox.com/hosts](https://github-hosts.tinsfox.com/hosts)
-2. 更新本地 hosts 文件：
-   - Windows：`C:\Windows\System32\drivers\etc\hosts`
-   - MacOS/Linux：`/etc/hosts`
-3. 刷新 DNS：
-   - Windows：`ipconfig /flushdns`
-   - MacOS：`sudo killall -HUP mDNSResponder`
-   - Linux：`sudo systemd-resolve --flush-caches`
-
-## API 文档
-
-- `GET /hosts` - 获取 hosts 文件内容
-- `GET /hosts.json` - 获取 JSON 格式的数据
-- `GET /{domain}` - 获取指定域名的实时 DNS 解析结果
-- `POST /reset` - 清空缓存并重新获取所有数据（需要 API 密钥）
-
-## 常见问题
-
-### 权限问题
-- Windows：需要以管理员身份运行
-- MacOS/Linux：需要 sudo 权限
-
-### 部署问题
-- 确保 Cloudflare API Token 有正确权限
-- 检查 KV 命名空间 ID 是否正确
-- 查看 Worker 日志排查错误
-
-### 访问问题
-- 检查域名解析是否正确
-- 确认防火墙设置
-- 查看浏览器控制台错误信息
-
-### 更新失败
-- 检查网络连接
-- 确认 API Key 权限
-- 查看 Worker 执行日志
-
-## 📄 许可证
-
-本项目采用 [MIT 许可证](LICENSE)。
-
 ## 🤝 贡献
 
 欢迎提交 Issues 和 Pull Requests！
@@ -384,8 +320,13 @@ id = "your-kv-namespace-id"
 如果这个项目对你有帮助，请给它一个星标！
 
 [![Star History Chart](https://api.star-history.com/svg?repos=Yan-nian/custom-host&type=Date)](https://star-history.com/#Yan-nian/custom-host&Date)
-- [![Powered by DartNode](https://dartnode.com/branding/DN-Open-Source-sm.png)](https://dartnode.com "Powered by DartNode - Free VPS for Open Source")
 
-## 许可证
+## 🙏 鸣谢
 
-[MIT](./LICENSE)
+- [GitHub520](https://github.com/521xueweihan/GitHub520) - 灵感来源  
+- [TinsFox/github-hosts](https://github.com/TinsFox/github-hosts) - 技术参考
+- [Cloudflare Workers](https://workers.cloudflare.com/) - 提供强大的边缘计算平台
+
+## 📄 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。
