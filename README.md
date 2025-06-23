@@ -44,21 +44,9 @@ Fork 仓库后享受自动化部署：
 #### 步骤 1：Fork 仓库
 点击仓库右上角的 "Fork" 按钮，将仓库 Fork 到您的 GitHub 账户。
 
-#### 步骤 2：获取 Cloudflare API 凭据（两种方式）
+#### 步骤 2：获取 Cloudflare API 凭据
 
-**方式一：API Token（推荐）**
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. 点击右上角头像 → "My Profile" 
-3. 切换到 "API Tokens" 标签页
-4. 点击 "Create Token"
-5. 使用 "Edit Cloudflare Workers" 模板或自定义权限：
-   - **权限**：`Account:Cloudflare Workers:Edit`, `Zone:Zone Settings:Read`, `Zone:Zone:Read`
-   - **账户资源**：包含您的账户
-   - **区域资源**：包含所有区域（或特定区域）
-6. 点击 "Continue to summary" 然后 "Create Token"
-7. **复制生成的 Token**（只显示一次）
-
-**方式二：Global API Key（简单）**
+**推荐方式：Global API Key（简单）**
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. 点击右上角头像 → "My Profile" 
 3. 切换到 "API Tokens" 标签页
@@ -66,6 +54,15 @@ Fork 仓库后享受自动化部署：
 5. 输入密码确认
 6. **复制显示的 Global API Key**
 7. **同时记录您的 Cloudflare 账户邮箱**
+
+**备选方式：API Token（高级）**
+1. 在 "API Tokens" 标签页点击 "Create Token"
+2. 使用 "Edit Cloudflare Workers" 模板或自定义权限：
+   - **权限**：`Account:Cloudflare Workers:Edit`, `Zone:Zone Settings:Read`, `Zone:Zone:Read`
+   - **账户资源**：包含您的账户
+   - **区域资源**：包含所有区域（或特定区域）
+3. 点击 "Continue to summary" 然后 "Create Token"
+4. **复制生成的 Token**（只显示一次）
 
 #### 步骤 3：创建 KV 命名空间
 1. 在 Cloudflare Dashboard 进入 "Workers & Pages"
@@ -81,11 +78,7 @@ Fork 仓库后享受自动化部署：
 3. 点击 "New repository secret"
 4. **根据您选择的 API 方式添加 Secrets**：
 
-**如果使用 API Token（步骤 2 方式一）：**
-- **Name**: `CLOUDFLARE_API_TOKEN`
-- **Value**: 步骤 2 中复制的 API Token
-
-**如果使用 Global API Key（步骤 2 方式二）：**
+**如果使用 Global API Key（推荐，步骤 2 第一种方式）：**
 - **第一个 Secret**：
   - **Name**: `CLOUDFLARE_EMAIL`
   - **Value**: 您的 Cloudflare 账户邮箱
@@ -93,9 +86,15 @@ Fork 仓库后享受自动化部署：
   - **Name**: `CLOUDFLARE_API_KEY`
   - **Value**: 步骤 2 中复制的 Global API Key
 
+**如果使用 API Token（备选方式）：**
+- **Name**: `CLOUDFLARE_API_TOKEN`
+- **Value**: 步骤 2 中复制的 API Token
+
 **必须添加的 Secret（两种方式都需要）：**
 - **Name**: `KV_NAMESPACE_ID`
 - **Value**: 步骤 3 中复制的命名空间 ID
+
+⚠️ **注意**：选择一种认证方式即可，不需要同时设置两种！
 6. **复制创建的命名空间 ID**
 
 #### 步骤 5：配置 KV Namespace（安全方式）
@@ -140,16 +139,15 @@ preview_id = "your-actual-kv-namespace-id"
 #### 步骤 6：验证配置
 在触发部署前，请确认您的配置：
 
-**GitHub Secrets 检查清单：**
+**使用 Global API Key 的检查清单：**
 - ✅ 进入仓库 "Settings" → "Secrets and variables" → "Actions"
 - ✅ 确认存在 `CLOUDFLARE_EMAIL` Secret（您的 Cloudflare 账户邮箱）
 - ✅ 确认存在 `CLOUDFLARE_API_KEY` Secret（Global API Key）
 - ✅ 确认存在 `KV_NAMESPACE_ID` Secret（KV 命名空间 ID）
-- ✅ 确认三个 Secret 的值都已正确填入
 
-**Global API Key 使用提示：**
-- ✅ Global API Key 具有账户的完全权限，请妥善保管
-- ✅ 邮箱必须是您 Cloudflare 账户的注册邮箱
+**使用 API Token 的检查清单：**
+- ✅ 确认存在 `CLOUDFLARE_API_TOKEN` Secret（API Token）
+- ✅ 确认存在 `KV_NAMESPACE_ID` Secret（KV 命名空间 ID）
 - ✅ Token 权限包含 "Zone:Zone Settings:Read"
 - ✅ Token 账户资源包含您的账户
 
