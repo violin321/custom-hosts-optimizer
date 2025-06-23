@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>调试页面</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+        button { padding: 10px 20px; margin: 5px; }
+        pre { background: #f5f5f5; padding: 10px; overflow: auto; max-height: 300px; }
+    </style>
+</head>
+<body>
+    <h1>主页功能调试</h1>
+    
+    <div class="debug">
+        <h3>测试基本元素</h3>
+        <button onclick="checkElements()">检查页面元素</button>
+        <button onclick="testHostsLoad()">测试 Hosts 加载</button>
+        <button onclick="testOptimizeAll()">测试全域名优选</button>
+    </div>
+    
+    <div class="debug">
+        <h3>模拟主页结构</h3>
+        <div id="hosts-tab" class="tab-content active">
+            <button id="refreshHosts">立即优选刷新</button>
+            <pre id="hosts">正在加载 hosts 内容...</pre>
+            <span id="hostsStatus">状态：等待中</span>
+        </div>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        // 获取当前页面的基础 URL
+        const baseUrl = window.location.origin
+        let currentTab = 'hosts'
+
+        function log(message) {
+            const resultDiv = document.getElementById('result')
+            resultDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${message}</div>`
+            console.log(message)
+        }
+
+        function checkElements() {
+            log('=== 检查页面元素 ===')
+            const elements = ['hosts', 'refreshHosts', 'hostsStatus']
+            elements.forEach(id => {
+                const el = document.getElementById(id)
+                log(`元素 ${id}: ${el ? '存在' : '不存在'}`)
+            })
+        }
+
+        async function testHostsLoad() {
+            log('=== 测试 Hosts 加载 ===')
+            try {
+                const response = await fetch(`${baseUrl}/hosts`)
+                const text = await response.text()
+                log(`成功获取 hosts 数据，长度: ${text.length}`)
+                
+                const hostsElement = document.getElementById('hosts')
+                if (hostsElement) {
+                    hostsElement.textContent = text
+                    log('已更新 hosts 显示内容')
+                } else {
+                    log('错误：找不到 hosts 元素')
+                }
+            } catch (error) {
+                log(`错误：${error.message}`)
+            }
+        }
+
+        async function testOptimizeAll() {
+            log('=== 测试全域名优选 ===')
+            try {
+                const refreshBtn = document.getElementById('refreshHosts')
+                if (refreshBtn) {
+                    refreshBtn.textContent = '正在优选...'
+                    refreshBtn.disabled = true
+                }
+                
+                log('开始调用 /api/optimize-all...')
+                
+                const response = await fetch(`${baseUrl}/api/optimize-all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                
+                const result = await response.json()
+                log(`优选完成: 成功 ${result.optimized} 个，失败 ${result.failed} 个`)
+                
+                // 重新加载 hosts
+                setTimeout(() => {
+                    log('重新加载 hosts 内容...')
+                    testHostsLoad()
+                }, 1000)
+                
+            } catch (error) {
+                log(`错误：${error.message}`)
+            } finally {
+                const refreshBtn = document.getElementById('refreshHosts')
+                if (refreshBtn) {
+                    refreshBtn.textContent = '立即优选刷新'
+                    refreshBtn.disabled = false
+                }
+            }
+        }
+
+        // 绑定按钮事件
+        document.addEventListener('DOMContentLoaded', () => {
+            log('页面加载完成')
+            checkElements()
+            
+            const refreshBtn = document.getElementById('refreshHosts')
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', testOptimizeAll)
+                log('已绑定刷新按钮事件')
+            }
+            
+            // 自动加载一次 hosts
+            testHostsLoad()
+        })
+    </script>
+</body>
+</html>

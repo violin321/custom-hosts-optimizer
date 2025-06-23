@@ -142,11 +142,20 @@ function updateCountdown() {
 // 加载 hosts 内容
 async function loadHosts(forceRefresh = false) {
   const hostsElement = document.getElementById("hosts")
-  if (!hostsElement) return
+  if (!hostsElement) {
+    console.error('无法找到 hosts 元素，页面可能未完全加载')
+    // 等待 500ms 后重试
+    setTimeout(() => {
+      console.log('重试加载 hosts 内容...')
+      loadHosts(forceRefresh)
+    }, 500)
+    return
+  }
 
   const now = Date.now()
   
   console.log(`loadHosts调用: forceRefresh=${forceRefresh}, 缓存时间=${lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : '无'}`)
+  console.log('hosts元素状态:', hostsElement ? '找到' : '未找到')
   
   // 如果有缓存且未过期且不是强制刷新，使用缓存
   if (!forceRefresh && cachedHostsContent && lastHostsUpdate && 
@@ -305,8 +314,12 @@ function switchTab(tabName) {
 
 // 全域名优选函数 - 主页立即刷新功能
 async function optimizeAllDomains() {
+  console.log('开始执行全域名优选...')
+  
   const refreshBtn = document.getElementById('refreshHosts')
   const originalText = refreshBtn ? refreshBtn.textContent : '立即优选刷新'
+  
+  console.log('刷新按钮状态:', refreshBtn ? '找到' : '未找到')
   
   try {
     // 更新按钮状态
@@ -407,6 +420,8 @@ async function optimizeDomain(domain) {
 
 // 设置事件监听器
 function setupEventListeners() {
+  console.log('设置事件监听器...')
+  
   // 选项卡切换
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -439,48 +454,87 @@ function setupEventListeners() {
   // 刷新 hosts 按钮 - 执行全域名优选
   const refreshBtn = document.getElementById('refreshHosts')
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => optimizeAllDomains())
+    console.log('找到刷新按钮，绑定事件')
+    refreshBtn.addEventListener('click', () => {
+      console.log('刷新按钮被点击')
+      optimizeAllDomains()
+    })
+  } else {
+    console.error('无法找到刷新按钮元素')
+    // 等待 500ms 后重试绑定
+    setTimeout(() => {
+      console.log('重试绑定刷新按钮事件...')
+      const retryBtn = document.getElementById('refreshHosts')
+      if (retryBtn) {
+        console.log('重试成功，绑定刷新按钮事件')
+        retryBtn.addEventListener('click', () => {
+          console.log('刷新按钮被点击（重试绑定）')
+          optimizeAllDomains()
+        })
+      } else {
+        console.error('重试仍无法找到刷新按钮元素')
+      }
+    }, 500)
   }
 }
 
 // 初始化
 function init() {
+  console.log('开始初始化...')
+  
   setupEventListeners()
   
   // 初始化 SwitchHosts URL
   const switchHostsUrlElement = document.getElementById('switchHostsUrl')
   if (switchHostsUrlElement) {
     switchHostsUrlElement.textContent = `${baseUrl}/hosts`
+    console.log('SwitchHosts URL 已设置')
+  } else {
+    console.warn('无法找到 switchHostsUrl 元素')
   }
   
   // 恢复缓存
   const hasCachedData = restoreCache()
+  console.log('缓存恢复状态:', hasCachedData)
+  
+  // 检查关键元素是否存在
+  const hostsElement = document.getElementById("hosts")
+  const refreshBtn = document.getElementById('refreshHosts')
+  console.log('关键元素检查:')
+  console.log('- hosts 元素:', hostsElement ? '存在' : '不存在')
+  console.log('- 刷新按钮:', refreshBtn ? '存在' : '不存在')
   
   // 加载初始内容
   if (currentTab === 'hosts') {
+    console.log('当前标签页是 hosts，开始加载内容')
     if (hasCachedData) {
       // 如果有缓存，先显示缓存内容
-      const hostsElement = document.getElementById("hosts")
       if (hostsElement && cachedHostsContent) {
         hostsElement.textContent = cachedHostsContent
         updateCountdown()
+        console.log('显示缓存内容')
         
         // 在后台检查是否需要更新
         const now = Date.now()
         if (now - lastHostsUpdate >= HOSTS_CACHE_DURATION) {
+          console.log('缓存过期，后台更新')
           loadHosts(true) // 缓存过期，后台更新
         } else {
+          console.log('缓存有效，设置自动刷新定时器')
           setupAutoRefresh() // 设置自动刷新定时器
         }
       }
     } else {
       // 没有缓存，首次加载
+      console.log('没有缓存，首次加载')
       loadHosts(false)
     }
   }
   
   // 设置倒计时更新定时器
   setupCountdownTimer()
+  
+  console.log('初始化完成')
 }
 
 // 页面加载完成后初始化
