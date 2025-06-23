@@ -17,30 +17,131 @@ import { Bindings } from "./types"
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// 管理员认证中间件 - 使用完全手动实现以确保弹出认证对话框
+// 管理员认证中间件 - 使用URL参数验证
 const adminAuth = async (c: any, next: any) => {
-  const authHeader = c.req.header("Authorization");
-  const credentials = authHeader && authHeader.startsWith("Basic ") 
-    ? atob(authHeader.substring(6)).split(":") 
-    : null;
-
+  const username = c.req.query("user");
+  const password = c.req.query("pass");
+  
   // 预设的管理员凭据
   const validUsername = "admin";
   const validPassword = "admin123";
 
-  // 检查凭据是否有效
-  if (
-    credentials && 
-    credentials[0] === validUsername && 
-    credentials[1] === validPassword
-  ) {
+  // 检查URL参数中的凭据
+  if (username === validUsername && password === validPassword) {
     // 认证成功，继续执行后续中间件
     return await next();
   }
 
-  // 认证失败，返回401并要求基本认证
-  c.header("WWW-Authenticate", 'Basic realm="管理后台认证", charset="UTF-8"');
-  return c.text("需要管理员权限", 401);
+  // 认证失败，返回登录页面
+  const loginHtml = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台登录</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+        }
+        .login-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-title {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+        .login-btn {
+            width: 100%;
+            padding: 0.75rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
+        .login-btn:hover {
+            background: #5a6fd8;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2 class="login-title">🔐 管理后台登录</h2>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">用户名:</label>
+                <input type="text" id="username" name="username" value="admin" required>
+            </div>
+            <div class="form-group">
+                <label for="password">密码:</label>
+                <input type="password" id="password" name="password" placeholder="请输入密码" required>
+            </div>
+            <button type="submit" class="login-btn">登录</button>
+            <div class="error" id="error" style="display: none;">用户名或密码错误</div>
+        </form>
+    </div>
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            // 构建带认证参数的URL
+            const adminUrl = '/admin?user=' + encodeURIComponent(username) + '&pass=' + encodeURIComponent(password);
+            window.location.href = adminUrl;
+        });
+        
+        // 检查是否有错误参数
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error') === 'auth') {
+            document.getElementById('error').style.display = 'block';
+        }
+    </script>
+</body>
+</html>`;
+  
+  return c.html(loginHtml);
 }
 
 // 管理后台路由组
@@ -188,19 +289,31 @@ admin.get("/", async (c) => {
                     return;
                 }
 
-                container.innerHTML = domains.map(domain => \`
+                container.innerHTML = domains.map(domain => {
+                    // 安全地处理时间戳
+                    let timeStr = '未知时间';
+                    if (domain.timestamp && typeof domain.timestamp === 'number' && domain.timestamp > 0) {
+                        try {
+                            timeStr = new Date(domain.timestamp).toLocaleString();
+                        } catch (e) {
+                            timeStr = '无效时间';
+                        }
+                    }
+                    
+                    return \`
                     <div class="domain-item">
                         <div class="domain-info">
                             <strong>\${domain.domain}</strong>
                             \${domain.description ? \`<br><small>\${domain.description}</small>\` : ''}
-                            <br><small>IP: \${domain.ip || '未解析'} | 添加时间: \${new Date(domain.timestamp).toLocaleString()}</small>
+                            <br><small>IP: \${domain.ip || '未解析'} | 添加时间: \${timeStr}</small>
                         </div>
                         <div class="domain-actions">
                             <button class="btn btn-success" onclick="optimizeDomain('\${domain.domain}')">优选</button>
                             <button class="btn btn-danger" onclick="removeDomain('\${domain.domain}')">删除</button>
                         </div>
                     </div>
-                \`).join('');
+                    \`;
+                }).join('');
             } catch (error) {
                 showAlert('加载域名列表失败: ' + error.message, 'error');
             }
