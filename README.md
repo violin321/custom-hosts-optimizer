@@ -85,16 +85,26 @@ Fork 仓库后享受自动化部署：
 - **第二个 Secret**：
   - **Name**: `CLOUDFLARE_API_KEY`
   - **Value**: 步骤 2 中复制的 Global API Key
+- **第三个 Secret**：
+  - **Name**: `CLOUDFLARE_ACCOUNT_ID`
+  - **Value**: 您的 Cloudflare 账户 ID
 
 **如果使用 API Token（备选方式）：**
-- **Name**: `CLOUDFLARE_API_TOKEN`
-- **Value**: 步骤 2 中复制的 API Token
+- **第一个 Secret**：
+  - **Name**: `CLOUDFLARE_API_TOKEN`
+  - **Value**: 步骤 2 中复制的 API Token
+- **第二个 Secret**：
+  - **Name**: `CLOUDFLARE_ACCOUNT_ID`
+  - **Value**: 您的 Cloudflare 账户 ID
 
 **必须添加的 Secret（两种方式都需要）：**
 - **Name**: `KV_NAMESPACE_ID`
 - **Value**: 步骤 3 中复制的命名空间 ID
 
-⚠️ **注意**：选择一种认证方式即可，不需要同时设置两种！项目已升级到 wrangler 4.21.0，完全支持环境变量认证。
+⚠️ **注意**：
+- 选择一种认证方式即可，不需要同时设置两种！
+- 项目已升级到 wrangler 4.21.0 + wrangler-action v3.14.1，同时支持两种认证方式
+- GitHub Actions 会优先使用 API Token，如果未设置则使用 Global API Key
 6. **复制创建的命名空间 ID**
 
 #### 步骤 5：配置 KV Namespace（安全方式）
@@ -143,10 +153,12 @@ preview_id = "your-actual-kv-namespace-id"
 - ✅ 进入仓库 "Settings" → "Secrets and variables" → "Actions"
 - ✅ 确认存在 `CLOUDFLARE_EMAIL` Secret（您的 Cloudflare 账户邮箱）
 - ✅ 确认存在 `CLOUDFLARE_API_KEY` Secret（Global API Key）
+- ✅ 确认存在 `CLOUDFLARE_ACCOUNT_ID` Secret（账户 ID）
 - ✅ 确认存在 `KV_NAMESPACE_ID` Secret（KV 命名空间 ID）
 
 **使用 API Token 的检查清单：**
 - ✅ 确认存在 `CLOUDFLARE_API_TOKEN` Secret（API Token）
+- ✅ 确认存在 `CLOUDFLARE_ACCOUNT_ID` Secret（账户 ID）
 - ✅ 确认存在 `KV_NAMESPACE_ID` Secret（KV 命名空间 ID）
 - ✅ Token 权限包含 "Zone:Zone Settings:Read"
 - ✅ Token 账户资源包含您的账户
@@ -365,19 +377,26 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 
 **解决方案**：
 1. **检查 Secrets 配置**
-   - Global API Key 方式：确认 `CLOUDFLARE_EMAIL` 和 `CLOUDFLARE_API_KEY` 正确设置
-   - API Token 方式：确认 `CLOUDFLARE_API_TOKEN` 正确设置
+   - Global API Key 方式：确认 `CLOUDFLARE_EMAIL`、`CLOUDFLARE_API_KEY` 和 `CLOUDFLARE_ACCOUNT_ID` 正确设置
+   - API Token 方式：确认 `CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID` 正确设置
    - 检查 `KV_NAMESPACE_ID` 是否正确
 
-2. **Wrangler 版本兼容性**
-   - 项目已升级到 wrangler 4.21.0，完全支持环境变量认证
-   - 如果仍有问题，可在 Actions 中添加调试：
+2. **双重认证支持**
+   - 项目使用 wrangler 4.21.0 + wrangler-action v3.14.1
+   - GitHub Actions 优先使用 API Token，如果未设置则使用 Global API Key
+   - 两种认证方式都完全支持，可根据需要选择
+
+3. **调试认证问题**
    ```yaml
-   - name: Debug Wrangler
-     run: npx wrangler --version
+   - name: Debug Authentication
+     run: |
+       echo "Checking wrangler version..."
+       npx wrangler --version
+       echo "Testing authentication..."
+       npx wrangler whoami
    ```
 
-3. **API Key/Token 权限检查**
+4. **API Key/Token 权限检查**
    - Global API Key：需要账户的完整权限
    - API Token：确保包含 `Zone:Zone:Read`、`Zone:Zone Settings:Edit`、`Account:Cloudflare Workers:Edit` 权限
 

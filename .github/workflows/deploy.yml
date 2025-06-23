@@ -19,12 +19,14 @@ jobs:
         shell: bash
 
       - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
+        uses: cloudflare/wrangler-action@v3.14.1
         with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.21.0'
           command: deploy
           packageManager: npm
         env:
-          # 使用 Global API Key 的环境变量
+          # 支持 Global API Key 认证方式（通过 wrangler 4.21.0 环境变量）
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
