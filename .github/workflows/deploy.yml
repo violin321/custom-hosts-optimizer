@@ -40,7 +40,7 @@ jobs:
           wranglerVersion: '4.21.0'
           command: deploy
           packageManager: pnpm
+          workingDirectory: .
         env:
-          # 支持 Global API Key 认证方式（通过 wrangler 4.21.0 环境变量）
-          CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
-          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
