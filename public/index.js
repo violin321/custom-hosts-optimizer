@@ -353,7 +353,8 @@ async function optimizeAllDomains() {
     const response = await fetch(`${baseUrl}/api/optimize-all`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-api-key': 'main-page-refresh'
       },
       signal: controller.signal
     })
@@ -368,8 +369,30 @@ async function optimizeAllDomains() {
         'success'
       )
       
-      // 优选完成后清除缓存并重新加载hosts内容
-      console.log('全域名优选完成，清除缓存并重新加载hosts')
+      // 优选完成后，先调用缓存刷新API清理后端缓存
+      console.log('全域名优选完成，开始刷新后端缓存...')
+      updateHostsStatus('正在刷新缓存...', 'updating')
+      
+      try {
+        const cacheRefreshResponse = await fetch(`${baseUrl}/api/cache/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': 'main-page-refresh'
+          }
+        })
+        
+        if (cacheRefreshResponse.ok) {
+          console.log('后端缓存刷新成功')
+        } else {
+          console.warn('后端缓存刷新失败，但继续更新前端')
+        }
+      } catch (cacheError) {
+        console.warn('调用缓存刷新API失败:', cacheError)
+      }
+      
+      // 清除前端缓存并重新加载hosts内容
+      console.log('清除前端缓存并重新加载hosts')
       cachedHostsContent = null
       lastHostsUpdate = null
       localStorage.removeItem('hosts_cache')
