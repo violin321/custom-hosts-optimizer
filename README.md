@@ -281,26 +281,6 @@ id = "your-kv-namespace-id"
 
 ## 🤝 贡献
 
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建功能分支：`git checkout -b feature/amazing-feature`
-3. 提交更改：`git commit -m 'Add amazing feature'`
-4. 推送分支：`git push origin feature/amazing-feature`
-5. 提交 Pull Request
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
-
-## 🙏 致谢
-
-- 感谢 [GitHub520](https://github.com/521xueweihan/GitHub520) 提供的灵感
-- 感谢 Cloudflare 提供的强大平台
-- 感谢所有贡献者和用户的支持
-
-## 🤝 贡献
-
 欢迎提交 Issues 和 Pull Requests！
 
 1. Fork 本项目
@@ -308,12 +288,6 @@ id = "your-kv-namespace-id"
 3. 提交更改：`git commit -am 'Add new feature'`
 4. 推送分支：`git push origin feature/new-feature`
 5. 提交 Pull Request
-
-## 🙏 鸣谢
-
-- [GitHub520](https://github.com/521xueweihan/GitHub520) - 灵感来源
-- [TinsFox/github-hosts](https://github.com/TinsFox/github-hosts) - 技术参考
-- [Cloudflare Workers](https://workers.cloudflare.com/) - 提供强大的边缘计算平台
 
 ## ⭐ Star History
 
