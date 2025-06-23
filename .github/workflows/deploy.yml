@@ -13,6 +13,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: pnpm install
+
       - name: Replace KV Namespace ID
         run: |
           sed -i 's/YOUR_KV_NAMESPACE_ID/${{ secrets.KV_NAMESPACE_ID }}/g' wrangler.toml
@@ -25,7 +39,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.21.0'
           command: deploy
-          packageManager: npm
+          packageManager: pnpm
         env:
           # 支持 Global API Key 认证方式（通过 wrangler 4.21.0 环境变量）
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
