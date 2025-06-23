@@ -12,8 +12,7 @@
     "release": "bash scripts/build.sh"
   },
   "dependencies": {
-    "hono": "^4.6.7",
-    "js-yaml": "^4.1.0"
+    "hono": "^4.6.7"
   },
   "license": "MIT",
   "devDependencies": {

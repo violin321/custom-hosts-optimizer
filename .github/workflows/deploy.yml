@@ -31,7 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pnpm install
+          # 在 CI 环境中使用 --no-frozen-lockfile 来允许更新锁文件
+          pnpm install --no-frozen-lockfile
           # 安装 jq 用于 JSON 解析
           sudo apt-get update && sudo apt-get install -y jq || echo "⚠️ jq 安装失败，将使用备用解析方法"
 
