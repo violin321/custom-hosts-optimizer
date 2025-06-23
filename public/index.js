@@ -174,14 +174,18 @@ async function loadHosts(forceRefresh = false) {
     const custom = true
     
     const params = new URLSearchParams()
-    if (optimize) params.append('optimize', 'true')
+    if (!optimize) params.append('optimize', 'false')
     if (!custom) params.append('custom', 'false')
     
-    const response = await fetch(`${baseUrl}/hosts?${params.toString()}`)
+    const queryString = params.toString()
+    const url = queryString ? `${baseUrl}/hosts?${queryString}` : `${baseUrl}/hosts`
+    
+    const response = await fetch(url)
     if (!response.ok) throw new Error("Failed to load hosts")
     
     const hostsContent = await response.text()
     console.log(`成功获取hosts数据，长度: ${hostsContent.length}`)
+    console.log('Hosts内容预览:', hostsContent.substring(0, 200) + '...')
     
     // 更新缓存和显示内容
     const isContentChanged = cachedHostsContent !== hostsContent
@@ -312,15 +316,21 @@ async function optimizeAllDomains() {
     }
     
     updateHostsStatus('正在执行全域名优选，请稍候...', 'updating')
-    showMessage('开始执行全域名优选，这可能需要一些时间...', 'info')
+    showMessage('开始执行全域名优选，这可能需要1-2分钟时间...', 'info')
     
     // 调用全域名优选API
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2分钟超时
+    
     const response = await fetch(`${baseUrl}/api/optimize-all`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      signal: controller.signal
     })
+    
+    clearTimeout(timeoutId)
     
     const result = await response.json()
     
@@ -330,7 +340,13 @@ async function optimizeAllDomains() {
         'success'
       )
       
-      // 优选完成后重新加载hosts内容
+      // 优选完成后清除缓存并重新加载hosts内容
+      console.log('全域名优选完成，清除缓存并重新加载hosts')
+      cachedHostsContent = null
+      lastHostsUpdate = null
+      localStorage.removeItem('hosts_cache')
+      localStorage.removeItem('hosts_cache_timestamp')
+      
       setTimeout(() => {
         loadHosts(true) // 强制刷新hosts内容
       }, 1000)
@@ -342,8 +358,14 @@ async function optimizeAllDomains() {
     
   } catch (error) {
     console.error('全域名优选失败:', error)
-    showMessage(`全域名优选失败: ${error.message}`, 'error')
-    updateHostsStatus('全域名优选失败', 'error')
+    
+    if (error.name === 'AbortError') {
+      showMessage('全域名优选超时，请稍后重试', 'error')
+      updateHostsStatus('优选超时', 'error')
+    } else {
+      showMessage(`全域名优选失败: ${error.message}`, 'error')
+      updateHostsStatus('全域名优选失败', 'error')
+    }
   } finally {
     // 恢复按钮状态
     if (refreshBtn) {
