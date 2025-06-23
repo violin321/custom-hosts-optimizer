@@ -17,12 +17,31 @@ import { Bindings } from "./types"
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// 管理员认证中间件
-const adminAuth = basicAuth({
-  username: "admin", 
-  password: "admin123",
-  realm: "管理后台认证",
-})
+// 管理员认证中间件 - 使用完全手动实现以确保弹出认证对话框
+const adminAuth = async (c: any, next: any) => {
+  const authHeader = c.req.header("Authorization");
+  const credentials = authHeader && authHeader.startsWith("Basic ") 
+    ? atob(authHeader.substring(6)).split(":") 
+    : null;
+
+  // 预设的管理员凭据
+  const validUsername = "admin";
+  const validPassword = "admin123";
+
+  // 检查凭据是否有效
+  if (
+    credentials && 
+    credentials[0] === validUsername && 
+    credentials[1] === validPassword
+  ) {
+    // 认证成功，继续执行后续中间件
+    return await next();
+  }
+
+  // 认证失败，返回401并要求基本认证
+  c.header("WWW-Authenticate", 'Basic realm="管理后台认证", charset="UTF-8"');
+  return c.text("需要管理员权限", 401);
+}
 
 // 管理后台路由组
 const admin = new Hono<{ Bindings: Bindings }>()
