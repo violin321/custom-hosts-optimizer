@@ -45,8 +45,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Yan-nian/hosts.git
-cd hosts
+git clone https://github.com/Yan-nian/custom-host.git
+cd custom-host
 
 # 安装依赖
 pnpm install
@@ -84,18 +84,18 @@ pnpm exec wrangler auth login
 
 #### MacOS 用户
 ```bash
-sudo curl -fsSL https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.darwin-arm64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
+sudo curl -fsSL https://github.com/Yan-nian/custom-host/releases/download/v1.0.0/custom-hosts.darwin-arm64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
 ```
 
 #### Windows 用户
 在管理员权限的 PowerShell 中执行：
 ```powershell
-irm https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.windows-amd64.exe | iex
+irm https://github.com/Yan-nian/custom-host/releases/download/v1.0.0/custom-hosts.windows-amd64.exe | iex
 ```
 
 #### Linux 用户
 ```bash
-sudo curl -fsSL https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custom-hosts.linux-amd64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
+sudo curl -fsSL https://github.com/Yan-nian/custom-host/releases/download/v1.0.0/custom-hosts.linux-amd64 -o custom-hosts && sudo chmod +x ./custom-hosts && ./custom-hosts
 ```
 
 ## 🆕 自定义域名功能
@@ -304,7 +304,7 @@ pnpm run dev    # 本地开发
 pnpm run deploy # 部署到 Cloudflare
 ```
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/hosts)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-host)
 
 ## 鸣谢
 
