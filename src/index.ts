@@ -4,6 +4,7 @@ import {
   formatHostsFile,
   getDomainData,
   getCompleteHostsData,
+  getHostsData,
   resetHostsData,
   getCustomDomains,
   addCustomDomain,
@@ -11,6 +12,7 @@ import {
   fetchCustomDomainsData,
   fetchLatestHostsData,
   fetchIPFromMultipleDNS,
+  type HostEntry,
 } from "./services/hosts"
 import { handleSchedule } from "./scheduled"
 import { Bindings } from "./types"
@@ -624,8 +626,27 @@ app.get("/hosts.json", async (c) => {
 
 app.get("/hosts", async (c) => {
   try {
-    const allData = await getCompleteHostsData(c.env)
-    console.log(`合并后总数据: ${allData.length} 条`)
+    // 获取查询参数
+    const optimizeParam = c.req.query('optimize')
+    const customParam = c.req.query('custom')
+    
+    // 默认启用所有功能
+    const enableOptimization = optimizeParam !== 'false'
+    const includeCustomDomains = customParam !== 'false'
+    
+    console.log(`Hosts request - optimize: ${enableOptimization}, custom: ${includeCustomDomains}`)
+    
+    let allData: HostEntry[]
+    
+    if (includeCustomDomains) {
+      // 包含自定义域名的完整数据
+      allData = await getCompleteHostsData(c.env)
+      console.log(`合并后总数据 (包含自定义域名): ${allData.length} 条`)
+    } else {
+      // 仅 GitHub 域名数据
+      allData = await getHostsData(c.env)
+      console.log(`GitHub 数据: ${allData.length} 条`)
+    }
     
     const hostsContent = formatHostsFile(allData)
     console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
