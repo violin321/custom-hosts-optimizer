@@ -96,12 +96,16 @@ export async function fetchIPFromDNS(
 // 多DNS提供商重试机制
 export async function fetchIPFromMultipleDNS(domain: string): Promise<string | null> {
   for (const provider of DNS_PROVIDERS) {
-    const ip = await fetchIPFromDNS(domain, provider.name)
-    if (ip) {
-      console.log(`Successfully resolved ${domain} via ${provider.name}: ${ip}`)
-      return ip
+    try {
+      const ip = await fetchIPFromDNS(domain, provider.name)
+      if (ip) {
+        console.log(`Successfully resolved ${domain} via ${provider.name}: ${ip}`)
+        return ip
+      }
+      console.log(`Failed to resolve ${domain} via ${provider.name}`)
+    } catch (error) {
+      console.error(`Error resolving ${domain} via ${provider.name}:`, error)
     }
-    console.log(`Failed to resolve ${domain} via ${provider.name}`)
   }
   
   console.error(`Failed to resolve ${domain} from all DNS providers`)

@@ -254,37 +254,6 @@ admin.get("/", async (c) => {
             padding: 20px;
             margin-top: 16px;
         }
-        .debug-item {
-            background: white;
-            padding: 12px;
-            border-radius: 8px;
-            margin: 8px 0;
-            border-left: 4px solid #667eea;
-        }
-        .debug-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 16px;
-            margin-top: 16px;
-        }
-        .debug-card {
-            background: white;
-            padding: 16px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        .debug-card h4 {
-            color: #2d3748;
-            margin-bottom: 12px;
-            font-size: 1.1rem;
-        }
-        .debug-list {
-            max-height: 200px;
-            overflow-y: auto;
-            font-family: 'SFMono-Regular', Consolas, monospace;
-            font-size: 0.85rem;
-            line-height: 1.4;
-        }
         .controls-row {
             display: flex;
             justify-content: space-between;
@@ -346,36 +315,17 @@ admin.get("/", async (c) => {
             <button class="btn btn-primary" onclick="batchAddDomains()">📥 批量添加</button>
         </div>
 
-        <!-- 域名列表与调试信息 -->
+        <!-- 域名列表 -->
         <div class="card">
-            <h3>📋 域名管理与调试</h3>
+            <h3>📋 域名管理</h3>
             <div class="controls-row">
                 <div class="controls-left">
                     <button class="btn btn-success" onclick="loadDomains()">🔄 刷新列表</button>
-                    <button class="btn btn-info" onclick="loadDebugInfo()">🔍 调试信息</button>
                 </div>
                 <button class="btn btn-danger" onclick="clearAllCustomDomains()">🗑️ 清空自定义域名</button>
             </div>
             <div class="domain-list" id="domain-list">
                 <p>加载中...</p>
-            </div>
-            
-            <div id="debug-section" class="debug-section" style="display: none;">
-                <h4>🔍 调试信息</h4>
-                <div class="debug-grid">
-                    <div class="debug-card">
-                        <h4>存储的域名 (<span id="stored-count">0</span>)</h4>
-                        <div id="stored-domains" class="debug-list"></div>
-                    </div>
-                    <div class="debug-card">
-                        <h4>已解析域名 - 优化模式 (<span id="resolved-opt-count">0</span>)</h4>
-                        <div id="resolved-opt-domains" class="debug-list"></div>
-                    </div>
-                    <div class="debug-card">
-                        <h4>已解析域名 - 标准模式 (<span id="resolved-std-count">0</span>)</h4>
-                        <div id="resolved-std-domains" class="debug-list"></div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -399,68 +349,11 @@ admin.get("/", async (c) => {
                 const response = await fetch('/hosts.json');
                 const data = await response.json();
                 document.getElementById('total-domains').textContent = data.total;
-                document.getElementById('github-domains').textContent = data.github.length;
-                document.getElementById('custom-domains').textContent = data.custom.length;
-                document.getElementById('resolved-domains').textContent = data.custom.length;
+                document.getElementById('github-domains').textContent = data.github?.length || 0;
+                document.getElementById('custom-domains').textContent = data.custom?.length || 0;
+                document.getElementById('resolved-domains').textContent = data.custom?.length || 0;
             } catch (error) {
                 console.error('加载统计信息失败:', error);
-            }
-        }
-
-        // 加载调试信息
-        async function loadDebugInfo() {
-            try {
-                const debugSection = document.getElementById('debug-section');
-                debugSection.style.display = debugSection.style.display === 'none' ? 'block' : 'none';
-                
-                if (debugSection.style.display === 'block') {
-                    console.log('开始加载调试信息...');
-                    const response = await fetch('./debug');
-                    console.log('调试信息响应状态:', response.status);
-                    
-                    if (!response.ok) {
-                        throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
-                    }
-                    
-                    const data = await response.json();
-                    console.log('调试信息数据:', data);
-                    
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    
-                    // 安全地设置数据，确保元素存在
-                    const storedCountEl = document.getElementById('stored-count');
-                    const resolvedOptCountEl = document.getElementById('resolved-opt-count');
-                    const resolvedStdCountEl = document.getElementById('resolved-std-count');
-                    const storedDomainsEl = document.getElementById('stored-domains');
-                    const resolvedOptDomainsEl = document.getElementById('resolved-opt-domains');
-                    const resolvedStdDomainsEl = document.getElementById('resolved-std-domains');
-                    
-                    if (storedCountEl) storedCountEl.textContent = data.stored_count || 0;
-                    if (resolvedOptCountEl) resolvedOptCountEl.textContent = data.resolved_count_opt || 0;
-                    if (resolvedStdCountEl) resolvedStdCountEl.textContent = data.resolved_count_no_opt || 0;
-                    
-                    if (storedDomainsEl) {
-                        storedDomainsEl.innerHTML = (data.stored_domains || [])
-                            .map(domain => \`<div>\${domain}</div>\`).join('') || '<div>暂无数据</div>';
-                    }
-                    
-                    if (resolvedOptDomainsEl) {
-                        resolvedOptDomainsEl.innerHTML = (data.resolved_with_optimization || [])
-                            .map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('') || '<div>暂无数据</div>';
-                    }
-                    
-                    if (resolvedStdDomainsEl) {
-                        resolvedStdDomainsEl.innerHTML = (data.resolved_without_optimization || [])
-                            .map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('') || '<div>暂无数据</div>';
-                    }
-                    
-                    console.log('调试信息加载完成');
-                }
-            } catch (error) {
-                console.error('加载调试信息失败:', error);
-                showAlert('加载调试信息失败: ' + error.message, 'error');
             }
         }
 
@@ -472,10 +365,15 @@ admin.get("/", async (c) => {
                 const container = document.getElementById('domain-list');
                 
                 // 将对象转换为数组
-                const domains = Object.entries(domainsData).map(([domain, info]) => ({
-                    domain,
-                    ...info
-                }));
+                let domains = [];
+                if (Array.isArray(domainsData)) {
+                    domains = domainsData;
+                } else if (typeof domainsData === 'object' && domainsData !== null) {
+                    domains = Object.entries(domainsData).map(([domain, info]) => ({
+                        domain,
+                        ...info
+                    }));
+                }
                 
                 if (domains.length === 0) {
                     container.innerHTML = '<p style="text-align: center; color: #718096; padding: 40px;">暂无自定义域名</p>';
@@ -648,14 +546,12 @@ admin.get("/", async (c) => {
 admin.get("/debug", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const hostsData = await fetchCustomDomainsData(c.env)
     
     return c.json({
       stored_domains: customDomains.map(cd => cd.domain),
       stored_count: customDomains.length,
-      resolved_domains: hostsData.map(([ip, domain]) => ({ domain, ip })),
-      resolved_count: hostsData.length,
-      custom_domains: customDomains
+      custom_domains: customDomains,
+      timestamp: Date.now()
     })
   } catch (error) {
     return c.json({ 
@@ -668,45 +564,88 @@ admin.get("/debug", async (c) => {
 app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
 app.get("/", async (c) => {
-  const html = await c.env.ASSETS.get("index.html")
-  if (!html) {
-    return c.text("Template not found", 404)
+  try {
+    const html = await c.env.ASSETS.get("index.html")
+    if (!html) {
+      return c.text("Template not found", 404)
+    }
+    return c.html(html)
+  } catch (error) {
+    console.error("Error loading index.html:", error)
+    return c.html(`
+<!DOCTYPE html>
+<html>
+<head><title>Custom Hosts</title></head>
+<body>
+<h1>Custom Hosts Service</h1>
+<p>Service is running. Visit /admin-x7k9m3q2 for management.</p>
+<p>Error loading assets: ${error instanceof Error ? error.message : String(error)}</p>
+</body>
+</html>
+    `)
   }
-
-  return c.html(html)
 })
 
 app.get("/hosts.json", async (c) => {
-  const includeCustom = c.req.query("custom") !== "false"
+  try {
+    const allData = await getCompleteHostsData(c.env)
+    
+    // 分离 GitHub 域名和自定义域名
+    const githubData = []
+    const customData = []
+    
+    for (const [ip, domain] of allData) {
+      if (domain.includes('github') || domain.includes('githubusercontent')) {
+        githubData.push([ip, domain])
+      } else {
+        customData.push([ip, domain])
+      }
+    }
 
-  const allData = await getCompleteHostsData(c.env)
-
-  return c.json({
-    entries: allData,
-    total: allData.length,
-    includeCustom,
-  })
+    return c.json({
+      entries: allData,
+      total: allData.length,
+      github: githubData,
+      custom: customData,
+      includeCustom: true
+    })
+  } catch (error) {
+    console.error("Error in /hosts.json:", error)
+    return c.json({
+      entries: [],
+      total: 0,
+      github: [],
+      custom: [],
+      includeCustom: true,
+      error: error instanceof Error ? error.message : String(error)
+    }, 500)
+  }
 })
 
 app.get("/hosts", async (c) => {
-  const useOptimization = c.req.query("optimize") === "true"
-  const includeCustom = c.req.query("custom") !== "false"
-
-  console.log(`/hosts请求 - 包含自定义域名: ${includeCustom}`)
-
-  const allData = await getCompleteHostsData(c.env)
-  console.log(`合并后总数据: ${allData.length} 条`)
-  
-  const hostsContent = formatHostsFile(allData)
-  console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
-  
-  return c.text(hostsContent)
+  try {
+    const allData = await getCompleteHostsData(c.env)
+    console.log(`合并后总数据: ${allData.length} 条`)
+    
+    const hostsContent = formatHostsFile(allData)
+    console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
+    
+    return c.text(hostsContent)
+  } catch (error) {
+    console.error("Error in /hosts:", error)
+    return c.text(`# Error generating hosts file: ${error instanceof Error ? error.message : String(error)}`, 500)
+  }
 })
 
 // 自定义域名管理 API
 app.get("/api/custom-domains", async (c) => {
-  const customDomains = await getCustomDomains(c.env)
-  return c.json(customDomains)
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    return c.json(customDomains)
+  } catch (error) {
+    console.error("Error getting custom domains:", error)
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
 })
 
 app.post("/api/custom-domains", async (c) => {
@@ -846,9 +785,16 @@ app.get("/:domain", async (c) => {
 app.delete("/api/custom-domains", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const domainNames = Object.keys(customDomains)
+    let domainCount = 0
     
-    if (domainNames.length === 0) {
+    // 计算域名数量
+    if (Array.isArray(customDomains)) {
+      domainCount = customDomains.length
+    } else if (typeof customDomains === 'object' && customDomains !== null) {
+      domainCount = Object.keys(customDomains).length
+    }
+    
+    if (domainCount === 0) {
       return c.json({ message: "No custom domains to clear", count: 0 })
     }
     
@@ -857,7 +803,7 @@ app.delete("/api/custom-domains", async (c) => {
     
     return c.json({ 
       message: "All custom domains cleared successfully", 
-      count: domainNames.length 
+      count: domainCount 
     })
   } catch (error) {
     console.error("Error clearing custom domains:", error)
@@ -869,7 +815,14 @@ app.delete("/api/custom-domains", async (c) => {
 app.get("/test-custom-domains", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const domains = Object.keys(customDomains)
+    let domains: string[] = []
+    
+    // 兼容数组和对象格式
+    if (Array.isArray(customDomains)) {
+      domains = customDomains.map(cd => cd.domain)
+    } else if (typeof customDomains === 'object' && customDomains !== null) {
+      domains = Object.keys(customDomains)
+    }
     
     if (domains.length === 0) {
       return c.json({
@@ -884,14 +837,25 @@ app.get("/test-custom-domains", async (c) => {
     for (const domain of domains) {
       console.log(`测试域名: ${domain}`)
       
-      const standardIp = await fetchIPFromMultipleDNS(domain)
-      
-      tests.push({
-        domain,
-        standardResolution: standardIp || '解析失败',
-        resolvedIp: standardIp,
-        storedInfo: customDomains.find(cd => cd.domain === domain)
-      })
+      try {
+        const standardIp = await fetchIPFromMultipleDNS(domain)
+        
+        tests.push({
+          domain,
+          standardResolution: standardIp || '解析失败',
+          resolvedIp: standardIp,
+          storedInfo: Array.isArray(customDomains) 
+            ? customDomains.find(cd => cd.domain === domain)
+            : customDomains[domain]
+        })
+      } catch (error) {
+        tests.push({
+          domain,
+          standardResolution: '解析错误',
+          resolvedIp: null,
+          error: error instanceof Error ? error.message : String(error)
+        })
+      }
     }
     
     return c.json({
@@ -910,14 +874,12 @@ app.get("/test-custom-domains", async (c) => {
 app.get("/debug", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const hostsData = await fetchCustomDomainsData(c.env)
     
     return c.json({
       stored_domains: customDomains.map(cd => cd.domain),
       stored_count: customDomains.length,
-      resolved_domains: hostsData.map(([ip, domain]) => ({ domain, ip })),
-      resolved_count: hostsData.length,
-      custom_domains: customDomains
+      custom_domains: customDomains,
+      timestamp: Date.now()
     })
   } catch (error) {
     return c.json({ 
