@@ -165,7 +165,7 @@
         <tr>
           <td>/api/optimize-all</td>
           <td><span class="method post">POST</span></td>
-          <td>优选所有自定义域名的 IP 地址</td>
+          <td>优选所有自定义域名的 IP 地址（需要 API Key 或管理后台访问）</td>
         </tr>
         <tr>
           <td>/api/cache/status</td>
@@ -175,17 +175,41 @@
         <tr>
           <td>/api/cache/refresh</td>
           <td><span class="method post">POST</span></td>
-          <td>手动刷新 GitHub 域名缓存</td>
+          <td>手动刷新 GitHub 域名缓存（需要 API Key 或管理后台访问）</td>
         </tr>
         <tr>
           <td>/api/cache</td>
           <td><span class="method delete">DELETE</span></td>
-          <td>清空所有缓存数据</td>
+          <td>清空所有缓存数据（需要 API Key 或管理后台访问）</td>
         </tr>
         <tr>
           <td>/api/reset</td>
           <td><span class="method post">POST</span></td>
           <td>清空缓存并重新获取GitHub域名数据</td>
+        </tr>
+      </table>
+
+      <h3>系统配置接口</h3>
+      <table class="api-table">
+        <tr>
+          <th>接口</th>
+          <th>方法</th>
+          <th>描述</th>
+        </tr>
+        <tr>
+          <td>/api/system/config</td>
+          <td><span class="method get">GET</span></td>
+          <td>获取系统配置信息（需要管理后台访问）</td>
+        </tr>
+        <tr>
+          <td>/api/system/api-key</td>
+          <td><span class="method put">PUT</span></td>
+          <td>更新 API Key（需要管理后台访问）</td>
+        </tr>
+        <tr>
+          <td>/api/system/admin-path</td>
+          <td><span class="method put">PUT</span></td>
+          <td>更新管理后台地址（需要 API Key 或管理后台访问）</td>
         </tr>
       </table>
 
@@ -273,12 +297,17 @@
       <li>强制刷新缓存：<code>GET /hosts?refresh=true</code></li>
       <li>仅获取GitHub域名：<code>GET /hosts?custom=false</code></li>
       <li>获取JSON格式数据：<code>GET /hosts.json</code></li>
-      <li>优选所有域名：<code>POST /api/optimize-all</code></li>
       <li>查看缓存状态：<code>GET /api/cache/status</code></li>
-      <li>手动刷新缓存：<code>POST /api/cache/refresh</code></li>
-      <li>添加自定义域名：<code>POST /api/custom-domains</code> <code>{"domain":"example.com"}</code></li>
-      <li>批量添加域名：<code>POST /api/custom-domains/batch</code> <code>{"domains":[{"domain":"a.com"},{"domain":"b.com"}]}</code></li>
       <li>查看域名统计：<code>GET /hosts.json</code></li>
+    </ul>
+    
+    <h4>管理 API（需要验证）</h4>
+    <p><strong>注意：</strong>管理类 API 需要通过<a href="/admin">管理后台</a>访问，或使用 API Key 验证。</p>
+    <ul>
+      <li>优选所有域名：<code>POST /api/optimize-all?key=YOUR_API_KEY</code></li>
+      <li>手动刷新缓存：<code>POST /api/cache/refresh?key=YOUR_API_KEY</code></li>
+      <li>添加自定义域名：<code>POST /api/custom-domains</code>（需要管理后台）</li>
+      <li>批量添加域名：<code>POST /api/custom-domains/batch</code>（需要管理后台）</li>
     </ul>
   </div>
 

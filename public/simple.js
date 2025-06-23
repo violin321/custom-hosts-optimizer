@@ -221,6 +221,33 @@ function initPage() {
     console.log('复制按钮事件已绑定')
   }
   
+  // 绑定选项卡切换
+  const tabs = document.querySelectorAll('.tab')
+  const tabContents = document.querySelectorAll('.tab-content')
+  
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      console.log('选项卡被点击:', tab.getAttribute('data-tab'))
+      
+      // 移除所有活动状态
+      tabs.forEach(t => t.classList.remove('active'))
+      tabContents.forEach(tc => tc.classList.remove('active'))
+      
+      // 添加当前活动状态
+      tab.classList.add('active')
+      const targetTab = tab.getAttribute('data-tab')
+      const targetContent = document.getElementById(`${targetTab}-tab`)
+      if (targetContent) {
+        targetContent.classList.add('active')
+        console.log('切换到选项卡:', targetTab)
+      } else {
+        console.error('找不到选项卡内容:', `${targetTab}-tab`)
+      }
+    })
+  })
+  
+  console.log('选项卡事件已绑定，找到', tabs.length, '个选项卡')
+
   // 绑定其他复制按钮
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('copy-btn') && e.target.getAttribute('data-copy')) {
