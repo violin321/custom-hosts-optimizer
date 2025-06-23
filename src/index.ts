@@ -35,6 +35,12 @@ const apiAuth = async (c: any, next: any) => {
     '/api/system/' // 系统配置 API 也需要验证
   ]
   
+  // 主页刷新功能允许访问的API（限制权限）
+  const mainPageAllowedPaths = [
+    '/api/optimize-all',
+    '/api/cache/refresh'
+  ]
+  
   // 检查是否是需要保护的 API
   const isProtectedAPI = protectedPaths.some(protectedPath => 
     path.startsWith(protectedPath) && 
@@ -62,11 +68,29 @@ const apiAuth = async (c: any, next: any) => {
     const isValidReferer = referer && referer.includes(configuredAdminPath)
     const isValidOrigin = origin && host && origin.includes(host)
     
-    // API Key 验证（可选）
+    // API Key 验证（包括特殊的主页刷新Key）
     const apiKey = c.req.header('x-api-key') || c.req.query('key')
-    const isValidApiKey = !configuredApiKey || apiKey === configuredApiKey || apiKey === 'main-page-refresh'
+    const isValidApiKey = !configuredApiKey || apiKey === configuredApiKey
     
-    if (!isValidReferer && !isValidApiKey) {
+    // 特殊处理：主页刷新专用API Key，只允许访问特定的API
+    const isMainPageRefreshKey = apiKey === 'main-page-refresh'
+    const isMainPageAllowedAPI = mainPageAllowedPaths.some(allowedPath => 
+      path.startsWith(allowedPath)
+    )
+    
+    // 验证逻辑
+    if (isMainPageRefreshKey) {
+      // 主页刷新Key只能访问指定的API
+      if (!isMainPageAllowedAPI) {
+        console.log(`主页刷新Key访问被拒绝: ${path} - 不在允许的API列表中`)
+        return c.json({ 
+          error: 'Access denied. Main page refresh key can only access optimization and cache refresh APIs.',
+          code: 'LIMITED_ACCESS_KEY',
+          allowedApis: mainPageAllowedPaths
+        }, 403)
+      }
+      console.log(`主页刷新Key访问已验证: ${path}`)
+    } else if (!isValidReferer && !isValidApiKey) {
       console.log(`API 访问被拒绝: ${path}, referer: ${referer}, expected admin path: ${configuredAdminPath}`)
       return c.json({ 
         error: 'Access denied. Please use the admin panel to manage APIs.',
@@ -74,9 +98,9 @@ const apiAuth = async (c: any, next: any) => {
         hint: `Visit ${configuredAdminPath} to access management features`,
         adminPath: configuredAdminPath
       }, 403)
+    } else {
+      console.log(`API 访问已验证: ${path}`)
     }
-    
-    console.log(`API 访问已验证: ${path}`)
   }
   
   return await next()

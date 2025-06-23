@@ -30,6 +30,13 @@
 - **Query 方式**: `?key=YOUR_API_KEY`
 - **获取方式**: 联系管理员或查看环境变量配置
 
+#### 3. 特殊API Key（主页刷新功能）
+- **Key值**: `main-page-refresh`
+- **权限**: 仅允许访问以下API
+  - `/api/optimize-all` - 全域名优选
+  - `/api/cache/refresh` - 刷新缓存
+- **用途**: 供主页刷新功能使用，权限受限，安全性更高
+
 ## 🛡️ 安全特性
 
 ### 请求来源验证
@@ -88,7 +95,24 @@ curl -X POST \\
   "https://your-domain.com/api/cache/refresh?key=YOUR_API_KEY"
 ```
 
-### 3. 公开 API（无需验证）
+### 3. 使用特殊API Key
+
+```bash
+# 主页刷新功能 - 全域名优选
+curl -X POST -H "x-api-key: main-page-refresh" \\
+  https://your-domain.com/api/optimize-all
+
+# 主页刷新功能 - 刷新缓存  
+curl -X POST -H "x-api-key: main-page-refresh" \\
+  https://your-domain.com/api/cache/refresh
+
+# 尝试访问其他API会被拒绝
+curl -X POST -H "x-api-key: main-page-refresh" \\
+  https://your-domain.com/api/reset
+# 返回: {"error":"Access denied. Main page refresh key can only access optimization and cache refresh APIs."}
+```
+
+### 4. 公开 API（无需验证）
 
 ```bash
 # 获取 hosts 文件
