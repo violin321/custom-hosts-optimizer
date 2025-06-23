@@ -11,6 +11,7 @@
 - 🎯 **现代化界面** - 全新的选项卡式管理界面
 - 🔧 **完整 API** - RESTful API 支持所有功能
 - 🤖 **GitHub Actions** - 一键自动化部署
+- 🛠️ **管理后台** - 受密码保护的管理员界面
 
 ## 特性
 
@@ -99,7 +100,30 @@ sudo curl -fsSL https://github.com/Yan-nian/hosts/releases/download/v0.0.1/custo
 
 ## 🆕 自定义域名功能
 
-### 添加自定义域名
+### 🛠️ 管理后台（推荐）
+
+访问受密码保护的管理后台进行可视化管理：
+
+```
+https://your-worker-url.workers.dev/admin
+```
+
+**默认账户**：
+- 用户名：`admin`
+- 密码：`admin123`
+
+**功能特性**：
+- 📊 统计仪表板
+- ➕ 可视化添加域名
+- 📝 批量导入域名
+- 🔄 一键域名优选
+- 🗑️ 删除和清空操作
+
+详细配置请参考：[管理后台配置指南](ADMIN_GUIDE.md)
+
+### 🚀 API 接口
+
+#### 添加自定义域名
 
 ```bash
 curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=YOUR_API_KEY" \
@@ -107,13 +131,13 @@ curl -X POST "https://your-worker-url.workers.dev/api/custom-domains?key=YOUR_AP
   -d '{"domain": "example.com", "description": "我的网站"}'
 ```
 
-### 优选域名 IP
+#### 优选域名 IP
 
 ```bash
 curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=YOUR_API_KEY"
 ```
 
-### 获取优选后的 hosts
+#### 获取优选后的 hosts
 
 ```bash
 # 包含 IP 优选和自定义域名
