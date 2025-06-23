@@ -6,6 +6,8 @@ export interface Bindings {
   API_KEY: string
   ASSETS: { get(key: string): Promise<string | null> }
   ENABLE_OPTIMIZATION?: string
+  ADMIN_USERNAME?: string
+  ADMIN_PASSWORD?: string
 }
 
 export interface CustomDomain {

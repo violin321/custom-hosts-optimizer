@@ -259,6 +259,16 @@ jobs:
             echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
           fi
           
+          # 设置管理员密码
+          if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
+            echo "📝 设置 ADMIN_PASSWORD..."
+            echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD
+            echo "✅ ADMIN_PASSWORD 设置完成"
+          else
+            echo "⚠️ ADMIN_PASSWORD secret 未设置，使用默认密码"
+            echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD
+          fi
+          
           # 设置优选功能开关
           if [ -n "${{ secrets.ENABLE_OPTIMIZATION }}" ]; then
             echo "📝 设置 ENABLE_OPTIMIZATION 为: ${{ secrets.ENABLE_OPTIMIZATION }}"

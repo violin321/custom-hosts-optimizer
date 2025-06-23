@@ -6,9 +6,12 @@ assets = { directory = "public" }
 
 # 环境变量配置
 # 生产环境请使用 wrangler secret 命令设置
-# [vars]
+[vars]
 # API_KEY = "your-secure-api-key"
 # ENABLE_OPTIMIZATION = "false"
+# 管理后台默认账户（生产环境请使用 wrangler secret 设置）
+ADMIN_USERNAME = "admin"
+# ADMIN_PASSWORD = "admin123"  # 请使用 wrangler secret put ADMIN_PASSWORD 设置
 
 # KV 数据库绑定
 [[kv_namespaces]]
