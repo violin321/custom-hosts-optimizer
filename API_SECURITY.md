@@ -152,22 +152,19 @@ wrangler secret put API_KEY
 
 **动态配置管理后台地址：**
 1. 访问默认管理后台地址
-2. 在"系统设置"中输入新的管理后台地址
-3. 点击"更新后台地址"
-4. 重新部署服务使新地址生效
+**源码方式配置：**
+1. 修改 `src/index.ts` 中的管理后台路由
+2. 设置自定义的管理后台路径
+3. 重新部署服务使新地址生效
 
 **API 方式配置：**
 ```bash
-# 更新管理后台地址
-curl -X PUT "https://your-domain.com/api/system/admin-path?key=YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"adminPath":"/my-secret-admin"}'
-
 # 更新 API Key
 curl -X PUT "https://your-domain.com/api/system/api-key" \
-  -H "referer: https://your-domain.com/admin-x7k9m3q2" \
+  -H "referer: https://your-domain.com/your-admin-path" \
   -H "Content-Type: application/json" \
   -d '{"apiKey":"your-new-secure-api-key"}'
+```
 ```
 
 ### 验证逻辑配置

@@ -397,9 +397,6 @@ admin.get("/", async (c) => {
         <div class="header">
             <h1>🛠️ 自定义域名管理后台</h1>
             <p>管理和配置自定义域名，优化访问性能</p>
-            <div id="current-admin-path" style="margin-top: 10px; padding: 8px 16px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; font-size: 0.9rem; color: #667eea;">
-                <strong>当前管理地址:</strong> <span id="admin-path-display">/admin-x7k9m3q2</span>
-            </div>
         </div>
 
         <div id="alert-container"></div>
@@ -408,26 +405,16 @@ admin.get("/", async (c) => {
         <!-- 系统设置 -->
         <div class="card">
             <h3>⚙️ 系统设置</h3>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
-                <div>
-                    <div class="form-group">
-                        <label for="admin-path">管理后台地址:</label>
-                        <input type="text" id="admin-path" placeholder="/admin-x7k9m3q2" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                        <small style="color: #718096;">修改后需要重新部署才能生效</small>
-                    </div>
-                    <button class="btn btn-info" onclick="updateAdminPath()">🔄 更新后台地址</button>
+            <div>
+                <div class="form-group">
+                    <label for="api-key">API Key:</label>
+                    <input type="password" id="api-key" placeholder="输入新的 API Key" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
+                    <small style="color: #718096;">用于外部 API 调用验证</small>
                 </div>
-                <div>
-                    <div class="form-group">
-                        <label for="api-key">API Key:</label>
-                        <input type="password" id="api-key" placeholder="输入新的 API Key" style="width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;">
-                        <small style="color: #718096;">用于外部 API 调用验证</small>
-                    </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-info" onclick="updateApiKey()">🔑 更新 API Key</button>
-                        <button class="btn btn-success" onclick="generateApiKey()">🎲 生成随机 Key</button>
-                        <button class="btn btn-primary" onclick="showApiKey()">👁️ 显示当前 Key</button>
-                    </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-info" onclick="updateApiKey()">🔑 更新 API Key</button>
+                    <button class="btn btn-success" onclick="generateApiKey()">🎲 生成随机 Key</button>
+                    <button class="btn btn-primary" onclick="showApiKey()">👁️ 显示当前 Key</button>
                 </div>
             </div>
         </div>
@@ -733,37 +720,7 @@ admin.get("/", async (c) => {
             }
         }
 
-        // 更新管理后台地址
-        async function updateAdminPath() {
-            const newPath = document.getElementById('admin-path').value.trim();
-            if (!newPath) {
-                showAlert('请输入新的管理后台地址', 'error');
-                return;
-            }
 
-            if (!newPath.startsWith('/')) {
-                showAlert('管理后台地址必须以 / 开头', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/system/admin-path', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ adminPath: newPath })
-                });
-
-                if (response.ok) {
-                    showAlert('管理后台地址更新成功，请重新部署服务后访问新地址: ' + newPath);
-                    document.getElementById('admin-path').value = '';
-                } else {
-                    const error = await response.json();
-                    showAlert(error.error || '管理后台地址更新失败', 'error');
-                }
-            } catch (error) {
-                showAlert('管理后台地址更新失败: ' + error.message, 'error');
-            }
-        }
 
         // 加载系统配置
         async function loadSystemConfig() {
@@ -771,10 +728,6 @@ admin.get("/", async (c) => {
                 const response = await fetch('/api/system/config');
                 const config = await response.json();
                 if (response.ok) {
-                    if (config.adminPath) {
-                        document.getElementById('admin-path').placeholder = config.adminPath;
-                        document.getElementById('admin-path-display').textContent = config.adminPath;
-                    }
                     // 显示 API Key 状态
                     if (config.hasApiKey) {
                         document.getElementById('api-key').placeholder = '***已设置***';
@@ -823,8 +776,7 @@ admin.get("/debug", async (c) => {
   }
 })
 
-// 将管理后台路由组应用到应用中，并使用认证中间件
-app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
+
 
 app.get("/hosts.json", async (c) => {
   try {
@@ -1370,146 +1322,17 @@ app.put("/api/system/api-key", async (c) => {
   }
 })
 
-app.put("/api/system/admin-path", async (c) => {
-  try {
-    const body = await c.req.json()
-    const { adminPath } = body
 
-    if (!adminPath || typeof adminPath !== "string") {
-      return c.json({ error: "Admin path is required" }, 400)
-    }
 
-    if (!adminPath.startsWith("/")) {
-      return c.json({ error: "Admin path must start with /" }, 400)
-    }
+// 管理后台路由
+app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
-    // 获取现有配置
-    const existingConfig = await c.env.custom_hosts.get("system_config", {
-      type: "json",
-    }) as any || {}
-
-    // 更新配置
-    const newConfig = {
-      ...existingConfig,
-      adminPath,
-      lastUpdated: new Date().toISOString()
-    }
-
-    await c.env.custom_hosts.put("system_config", JSON.stringify(newConfig))
-
-    return c.json({ 
-      message: "Admin path updated successfully",
-      adminPath,
-      lastUpdated: newConfig.lastUpdated,
-      note: "Please redeploy the service for the new admin path to take effect"
-    })
-  } catch (error) {
-    console.error("Error updating admin path:", error)
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
-  }
-})
-
-// 动态管理后台路由 - 支持自定义路径
+// 域名查询路由
 app.get("*", async (c) => {
   const path = c.req.path
   
-  // 检查是否是管理后台路径
-  try {
-    const systemConfig = await c.env.custom_hosts.get("system_config", {
-      type: "json",
-    }) as any || {}
-    
-    const configuredAdminPath = systemConfig.adminPath || "/admin-x7k9m3q2"
-    
-    // 如果访问的是配置的管理后台路径，则显示管理界面
-    if (path === configuredAdminPath || path === configuredAdminPath + "/") {
-      console.log(`访问管理后台: ${path}`)
-      
-      // 直接返回管理后台 HTML 内容
-      const adminHtml = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自定义域名管理后台</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-        .container { 
-            max-width: 1400px; 
-            margin: 0 auto; 
-            padding: 20px; 
-        }
-        .header { 
-            background: rgba(255,255,255,0.95); 
-            padding: 30px; 
-            border-radius: 16px; 
-            margin-bottom: 24px; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
-            text-align: center;
-        }
-        .header h1 { 
-            color: #2d3748; 
-            margin-bottom: 8px; 
-            font-size: 2.2rem;
-            font-weight: 700;
-        }
-        .header p { 
-            color: #718096; 
-            font-size: 1.1rem;
-        }
-        .alert {
-            padding: 16px; 
-            margin: 20px 0; 
-            border-radius: 8px; 
-            background: #d4edda; 
-            color: #155724; 
-            border: 1px solid #c3e6cb;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🛠️ 自定义域名管理后台</h1>
-            <p>当前访问路径: ${path}</p>
-        </div>
-        <div class="alert">
-            <h3>✅ 动态管理后台功能测试成功！</h3>
-            <p>您现在访问的是动态配置的管理后台地址：<strong>${path}</strong></p>
-            <p>原始管理后台地址仍然可用：<a href="/admin-x7k9m3q2" style="color: #0066cc;">/admin-x7k9m3q2</a></p>
-            <br>
-            <p><strong>功能说明：</strong></p>
-            <ul style="margin-left: 20px; margin-top: 10px;">
-                <li>✅ 支持通过 API 动态设置管理后台地址</li>
-                <li>✅ 支持通过 API 设置和管理 API Key</li>
-                <li>✅ 管理后台地址保存在 KV 存储中</li>
-                <li>✅ 重新部署后新地址立即生效</li>
-            </ul>
-        </div>
-    </div>
-</body>
-</html>`
-      
-      return c.html(adminHtml)
-    }
-    
-    // 如果是默认管理后台地址，继续使用原有的路由组
-    if (path === "/admin-x7k9m3q2" || path === "/admin-x7k9m3q2/") {
-      return await admin.fetch(c.req.raw, c.env, c.executionCtx)
-    }
-  } catch (error) {
-    console.error("Error checking admin path:", error)
-  }
-  
   // 检查是否是域名查询路径
-  if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico") {
+  if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/admin-x7k9m3q2")) {
     const domain = path.substring(1) // 移除开头的 /
     
     // 简单验证是否是域名格式

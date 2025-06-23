@@ -205,11 +205,7 @@
           <td><span class="method put">PUT</span></td>
           <td>更新 API Key（需要管理后台访问）</td>
         </tr>
-        <tr>
-          <td>/api/system/admin-path</td>
-          <td><span class="method put">PUT</span></td>
-          <td>更新管理后台地址（需要 API Key 或管理后台访问）</td>
-        </tr>
+
       </table>
 
       <h3>调试接口</h3>
@@ -301,7 +297,7 @@
     </ul>
     
     <h4>管理 API（需要验证）</h4>
-    <p><strong>注意：</strong>管理类 API 需要通过<a href="/admin-x7k9m3q2">管理后台</a>访问，或使用 API Key 验证。</p>
+    <p><strong>注意：</strong>管理类 API 需要通过管理后台访问，或使用 API Key 验证。管理后台地址在部署时配置。</p>
     <ul>
       <li>优选所有域名：<code>curl -X POST -H "x-api-key: YOUR_API_KEY" /api/optimize-all</code></li>
       <li>手动刷新缓存：<code>curl -X POST -H "x-api-key: YOUR_API_KEY" /api/cache/refresh</code></li>
