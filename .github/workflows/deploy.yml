@@ -12,18 +12,7 @@ jobs:
     environment: production  # 添加环境保护
     env:
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
-      CLOUDFLARE          # 设置管理员密码
-          if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
-            echo "🔒 设置 ADMIN_PASSWORD..."
-            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
-              echo "✅ ADMIN_PASSWORD 设置完成"
-            else
-              echo "⚠️ ADMIN_PASSWORD 设置失败，继续执行"
-            fi
-          else
-            echo "ℹ️ ADMIN_PASSWORD secret 未设置，项目将使用基于URL的认证方式"
-            echo "ℹ️ 访问 /admin-x7k9m3q2 进行管理（无需额外密码）"
-          fisecrets.CLOUDFLARE_EMAIL }}
+      CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -213,7 +202,7 @@ jobs:
               echo "1. 在 Cloudflare Dashboard 中创建 KV 命名空间"
               echo "2. 复制 KV 命名空间 ID"
               echo "3. 在 GitHub 仓库 Settings > Secrets 中添加 KV_NAMESPACE_ID"
-              echo "� Cloudflare KV: https://dash.cloudflare.com/[account-id]/workers/kv/namespaces"
+              echo "🔗 Cloudflare KV: https://dash.cloudflare.com/[account-id]/workers/kv/namespaces"
               exit 1
             fi
           fi
@@ -338,7 +327,7 @@ jobs:
           
           # 设置 API Key
           if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
-            echo "� 设置 API_KEY..."
+            echo "🔑 设置 API_KEY..."
             if echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY --name "$WORKER_NAME" >/dev/null 2>&1; then
               echo "✅ API_KEY 设置完成"
             else
@@ -346,21 +335,6 @@ jobs:
             fi
           else
             echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
-          fi
-          
-          # 设置管理员密码
-          if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
-            echo "� 设置 ADMIN_PASSWORD..."
-            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
-              echo "✅ ADMIN_PASSWORD 设置完成"
-            else
-              echo "⚠️ ADMIN_PASSWORD 设置失败，继续执行"
-            fi
-          else
-            echo "� 设置默认 ADMIN_PASSWORD..."
-            if echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$WORKER_NAME" >/dev/null 2>&1; then
-              echo "✅ 默认 ADMIN_PASSWORD 设置完成"          else
-            echo "ℹ️ ENABLE_OPTIMIZATION secret 未设置，项目将使用默认配置"
           fi
           
           echo "✅ Secrets 设置流程完成（项目功能不依赖这些secrets）"
