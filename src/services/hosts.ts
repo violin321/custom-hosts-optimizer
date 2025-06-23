@@ -450,16 +450,26 @@ export async function fetchCustomDomainsData(env: Bindings, useOptimization: boo
     const entries: HostEntry[] = []
     
     for (const domain of domains) {
+      let ip: string | null = null
+      
       if (useOptimization) {
         const optimized = await optimizeDomainIP(domain)
         if (optimized) {
-          entries.push([optimized.ip, domain])
+          ip = optimized.ip
         }
       } else {
-        const ip = await fetchIPFromIPAddress(domain)
-        if (ip) {
-          entries.push([ip, domain])
-        }
+        ip = await fetchIPFromIPAddress(domain)
+      }
+      
+      // 如果无法解析 IP，使用占位符但仍然包含域名
+      if (!ip) {
+        console.warn(`Failed to resolve IP for domain: ${domain}`)
+        // 可以选择跳过或使用占位符 IP
+        // entries.push(['0.0.0.0', domain]) // 使用占位符
+        // 或者跳过该域名
+        continue
+      } else {
+        entries.push([ip, domain])
       }
     }
     

@@ -680,6 +680,28 @@ app.delete("/api/custom-domains", async (c) => {
   }
 })
 
+// 调试 API：获取自定义域名解析状态
+app.get("/api/custom-domains/debug", async (c) => {
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    const hostsData = await fetchCustomDomainsData(c.env, true) // 使用优化模式
+    const hostsDataNoOpt = await fetchCustomDomainsData(c.env, false) // 不使用优化模式
+    
+    return c.json({
+      stored_domains: Object.keys(customDomains),
+      stored_count: Object.keys(customDomains).length,
+      resolved_with_optimization: hostsData.map(([ip, domain]) => ({ domain, ip })),
+      resolved_without_optimization: hostsDataNoOpt.map(([ip, domain]) => ({ domain, ip })),
+      resolved_count_opt: hostsData.length,
+      resolved_count_no_opt: hostsDataNoOpt.length
+    })
+  } catch (error) {
+    return c.json({ 
+      error: "Debug failed: " + (error instanceof Error ? error.message : String(error)) 
+    }, 500)
+  }
+})
+
 export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
