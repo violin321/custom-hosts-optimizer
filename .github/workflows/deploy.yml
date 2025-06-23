@@ -21,6 +21,7 @@ jobs:
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
+          wranglerVersion: '4.21.0'
           command: deploy
           packageManager: npm
         env:
