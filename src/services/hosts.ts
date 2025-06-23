@@ -47,19 +47,29 @@ interface DnsResponse {
   Answer: DnsAnswer[]
 }
 
-// 重试机制
+// 重试机制 - 优化超时和重试策略
 async function retry<T>(
   fn: () => Promise<T>,
-  retries: number = 3,
-  delay: number = 1000
+  retries: number = 2, // 减少重试次数，避免过长等待
+  delay: number = 500  // 减少延迟时间
 ): Promise<T> {
   try {
     return await fn()
   } catch (error) {
     if (retries === 0) throw error
     await new Promise((resolve) => setTimeout(resolve, delay))
-    return retry(fn, retries - 1, delay * 2)
+    return retry(fn, retries - 1, delay * 1.5) // 减少延迟增长倍数
   }
+}
+
+// DNS查询超时控制
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 8000): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('DNS query timeout')), timeoutMs)
+    )
+  ])
 }
 
 // 使用 DNS API 获取 IP，基于 TinsFox 项目的实现
@@ -71,8 +81,13 @@ export async function fetchIPFromDNS(
     DNS_PROVIDERS.find((p) => p.name === providerName) || DNS_PROVIDERS[0]
 
   try {
-    const response = await retry(() =>
-      fetch(provider.url(domain), { headers: provider.headers })
+    const response = await withTimeout(
+      retry(() =>
+        fetch(provider.url(domain), { 
+          headers: provider.headers,
+          signal: AbortSignal.timeout(5000) // 5秒超时
+        })
+      )
     )
 
     if (!response.ok) return null

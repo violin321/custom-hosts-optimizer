@@ -337,8 +337,16 @@ function initPage() {
   console.log('开始加载初始 hosts 内容...')
   loadHosts()
   
-  // 每5分钟更新一次缓存状态
-  setInterval(loadCacheStatus, 5 * 60 * 1000)
+  // 每5分钟更新一次缓存状态（内存泄漏修复：存储定时器ID以便清理）
+  let cacheStatusInterval = setInterval(loadCacheStatus, 5 * 60 * 1000)
+  
+  // 页面卸载时清理定时器，防止内存泄漏
+  window.addEventListener('beforeunload', () => {
+    if (cacheStatusInterval) {
+      clearInterval(cacheStatusInterval)
+      cacheStatusInterval = null
+    }
+  })
   
   console.log('=== 页面初始化完成 ===')
 }

@@ -6,24 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>优选自定义host - 智能 IP 优选 | 自定义域名加速工具</title>
 
-  <meta name="description"
-    content="优选自定义host 是一个智能 IP 优选工具，使用 Cloudflare Workers 和公共 DNS API 来加速访问自定义域名，解    <h4>管理 API（需要验证）</h4>
-    <p><strong>注意：</strong>管理类 API 需要通过<a href="/admin-x7k9m3q2">管理后台</a>访问，或使用 API Key 验证。</p>
-    <ul>
-      <li>优选所有域名：<code>POST /api/optimize-all?key=YOUR_API_KEY</code></li>
-      <li>手动刷新缓存：<code>POST /api/cache/refresh?key=YOUR_API_KEY</code></li>
-      <li>添加自定义域名：<code>POST /api/custom-domains</code>（需要管理后台）</li>
-      <li>批量添加域名：<code>POST /api/custom-domains/batch</code>（需要管理后台）</li>
-    </ul>
-    
-    <h4>主页刷新专用 API Key</h4>
-    <p><strong>特殊功能：</strong>主页刷新按钮使用限制权限的特殊 API Key。</p>
-    <ul>
-      <li>Key值：<code>main-page-refresh</code></li>
-      <li>权限：仅允许访问优选和缓存刷新功能</li>
-      <li>优势：主页功能正常使用，但不能执行敏感管理操作</li>
-      <li>安全：即使Key泄露，也无法进行域名管理等危险操作</li>
-    </ul>支持自定义域名管理和智能优选。">
+  <meta name="description" content="优选自定义host 是一个智能 IP 优选工具，使用 Cloudflare Workers 和公共 DNS API 来加速访问自定义域名，支持自定义域名管理和智能优选。">
   <meta name="keywords" content="自定义域名加速,IP优选,Hosts工具,DNS优化,Cloudflare Workers,域名加速">
   <meta name="author" content="Yan-nian">
   <link rel="canonical" href="#" />
@@ -318,12 +301,21 @@
     </ul>
     
     <h4>管理 API（需要验证）</h4>
-    <p><strong>注意：</strong>管理类 API 需要通过<a href="/admin">管理后台</a>访问，或使用 API Key 验证。</p>
+    <p><strong>注意：</strong>管理类 API 需要通过<a href="/admin-x7k9m3q2">管理后台</a>访问，或使用 API Key 验证。</p>
     <ul>
-      <li>优选所有域名：<code>POST /api/optimize-all?key=YOUR_API_KEY</code></li>
-      <li>手动刷新缓存：<code>POST /api/cache/refresh?key=YOUR_API_KEY</code></li>
+      <li>优选所有域名：<code>curl -X POST -H "x-api-key: YOUR_API_KEY" /api/optimize-all</code></li>
+      <li>手动刷新缓存：<code>curl -X POST -H "x-api-key: YOUR_API_KEY" /api/cache/refresh</code></li>
       <li>添加自定义域名：<code>POST /api/custom-domains</code>（需要管理后台）</li>
       <li>批量添加域名：<code>POST /api/custom-domains/batch</code>（需要管理后台）</li>
+    </ul>
+    
+    <h4>主页刷新专用 API Key</h4>
+    <p><strong>特殊功能：</strong>主页刷新按钮使用限制权限的特殊 API Key。</p>
+    <ul>
+      <li>Key值：<code>main-page-refresh</code></li>
+      <li>权限：仅允许访问优选和缓存刷新功能</li>
+      <li>优势：主页功能正常使用，但不能执行敏感管理操作</li>
+      <li>安全：即使Key泄露，也无法进行域名管理等危险操作</li>
     </ul>
   </div>
 

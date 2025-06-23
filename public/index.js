@@ -266,14 +266,29 @@ function setupAutoRefresh() {
   }
 }
 
-// 设置倒计时更新定时器
+// 设置倒计时更新定时器（内存泄漏修复）
+let countdownTimerInterval = null
+
 function setupCountdownTimer() {
+  // 清理之前的定时器
+  if (countdownTimerInterval) {
+    clearInterval(countdownTimerInterval)
+  }
+  
   // 每分钟更新一次倒计时显示
-  setInterval(() => {
+  countdownTimerInterval = setInterval(() => {
     if (currentTab === 'hosts' && lastHostsUpdate) {
       updateCountdown()
     }
   }, 60 * 1000) // 每分钟更新
+}
+
+// 清理定时器函数
+function cleanupTimers() {
+  if (countdownTimerInterval) {
+    clearInterval(countdownTimerInterval)
+    countdownTimerInterval = null
+  }
 }
 
 // 选项卡切换
@@ -539,6 +554,15 @@ function init() {
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', init)
+
+// 页面卸载时清理所有定时器
+window.addEventListener('beforeunload', () => {
+  // 清理所有定时器
+  cleanupTimers()
+  
+  // 记录当前状态到日志
+  console.log('页面卸载，资源已清理')
+})
 
 // 页面可见性变化时的处理
 document.addEventListener('visibilitychange', () => {
