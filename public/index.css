@@ -175,6 +175,18 @@ body {
   border-color: #f87171;
 }
 
+.status-text.valid {
+  color: var(--success-color);
+  background: var(--success-bg);
+  border-color: #34d399;
+}
+
+.status-text.expired {
+  color: var(--warning-color);
+  background: var(--warning-bg);
+  border-color: #fbbf24;
+}
+
 /* 按钮样式 */
 .btn {
   padding: 0.75rem 1.5rem;

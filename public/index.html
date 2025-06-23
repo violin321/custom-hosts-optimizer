@@ -108,13 +108,13 @@
         <tr>
           <td>/hosts</td>
           <td><span class="method get">GET</span></td>
-          <td>optimize=[true|false], custom=[true|false]</td>
-          <td>获取 hosts 文件内容，默认启用所有功能</td>
+          <td>refresh=[true|false], custom=[true|false]</td>
+          <td>获取 hosts 文件内容，支持强制刷新缓存</td>
         </tr>
         <tr>
           <td>/hosts.json</td>
           <td><span class="method get">GET</span></td>
-          <td>-</td>
+          <td>refresh=[true|false]</td>
           <td>获取 JSON 格式的域名数据，包含统计信息</td>
         </tr>
         <tr>
@@ -166,6 +166,21 @@
           <td>/api/optimize-all</td>
           <td><span class="method post">POST</span></td>
           <td>优选所有自定义域名的 IP 地址</td>
+        </tr>
+        <tr>
+          <td>/api/cache/status</td>
+          <td><span class="method get">GET</span></td>
+          <td>查看缓存状态和统计信息</td>
+        </tr>
+        <tr>
+          <td>/api/cache/refresh</td>
+          <td><span class="method post">POST</span></td>
+          <td>手动刷新 GitHub 域名缓存</td>
+        </tr>
+        <tr>
+          <td>/api/cache</td>
+          <td><span class="method delete">DELETE</span></td>
+          <td>清空所有缓存数据</td>
         </tr>
         <tr>
           <td>/api/reset</td>
@@ -255,10 +270,12 @@
     <h4>API 使用示例</h4>
     <ul>
       <li>获取完整hosts文件：<code>GET /hosts</code></li>
+      <li>强制刷新缓存：<code>GET /hosts?refresh=true</code></li>
       <li>仅获取GitHub域名：<code>GET /hosts?custom=false</code></li>
-      <li>禁用IP优选：<code>GET /hosts?optimize=false</code></li>
       <li>获取JSON格式数据：<code>GET /hosts.json</code></li>
       <li>优选所有域名：<code>POST /api/optimize-all</code></li>
+      <li>查看缓存状态：<code>GET /api/cache/status</code></li>
+      <li>手动刷新缓存：<code>POST /api/cache/refresh</code></li>
       <li>添加自定义域名：<code>POST /api/custom-domains</code> <code>{"domain":"example.com"}</code></li>
       <li>批量添加域名：<code>POST /api/custom-domains/batch</code> <code>{"domains":[{"domain":"a.com"},{"domain":"b.com"}]}</code></li>
       <li>查看域名统计：<code>GET /hosts.json</code></li>

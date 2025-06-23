@@ -24,7 +24,7 @@ preview_id = "2d6d2f028fed47328648d9c2f86beb9b"  # 预览环境的 KV ID
 enabled = true
 head_sampling_rate = 1
 
-# 定时任务配置 - 每小时执行一次
+# 定时任务配置 - 参考 TinsFox/github-hosts，每60分钟执行一次（避免过频繁更新）
 [triggers]
 crons = ["0 */1 * * *"]
 

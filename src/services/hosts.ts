@@ -156,38 +156,50 @@ export async function storeData(
   await updateHostsData(env, data)
 }
 
-// 获取 hosts 数据
-export async function getHostsData(env: Bindings): Promise<HostEntry[]> {
-  const kvData = (await env.custom_hosts.get("domain_data", {
-    type: "json",
-  })) as KVData | null
-
-  // 如果数据不存在，或者最后更新时间超过1小时，获取新数据
-  if (
-    !kvData?.lastUpdated ||
-    new Date(kvData.lastUpdated).getTime() + 1000 * 60 * 60 < Date.now() ||
-    Object.keys(kvData.domain_data || {}).length === 0
-  ) {
-    console.log("Data expired or missing, fetching new data...")
-    const newEntries = await fetchLatestHostsData()
-    await storeData(env, newEntries)
-    return newEntries
-  }
-
+// 获取 hosts 数据 - 优化缓存策略，参考 TinsFox/github-hosts 最佳实践
+export async function getHostsData(env: Bindings, forceRefresh: boolean = false): Promise<HostEntry[]> {
   try {
-    // 从 KV 获取所有域名的数据
+    const kvData = (await env.custom_hosts.get("domain_data", {
+      type: "json",
+    })) as KVData | null
+
+    // 检查缓存是否有效（6小时内的数据认为有效，而不是1小时）
+    const cacheValidTime = 6 * 60 * 60 * 1000 // 6小时
+    const isDataValid = kvData?.lastUpdated && 
+      (new Date(kvData.lastUpdated).getTime() + cacheValidTime > Date.now()) &&
+      Object.keys(kvData.domain_data || {}).length > 0
+
+    // 只有在强制刷新或数据无效时才获取新数据
+    if (forceRefresh || !isDataValid) {
+      console.log(`${forceRefresh ? 'Force refresh requested' : 'Cache expired or invalid'}, fetching new data...`)
+      const newEntries = await fetchLatestHostsData()
+      await storeData(env, newEntries)
+      return newEntries
+    }
+
+    // 从缓存获取数据
     const entries: HostEntry[] = []
     for (const domain of GITHUB_URLS) {
-      const domainData = kvData.domain_data[domain]
+      const domainData = kvData!.domain_data[domain]
       if (domainData) {
         entries.push([domainData.ip, domain])
       }
     }
-    console.log(`Loaded ${entries.length} entries from KV`)
+    
+    const cacheAge = Math.round((Date.now() - new Date(kvData!.lastUpdated).getTime()) / 60000)
+    console.log(`Loaded ${entries.length} entries from cache (age: ${cacheAge} minutes)`)
     return entries
   } catch (error) {
     console.error("Error getting hosts data:", error)
-    return []
+    // 降级处理：如果出错，尝试获取新数据
+    try {
+      const newEntries = await fetchLatestHostsData()
+      await storeData(env, newEntries)
+      return newEntries
+    } catch (fallbackError) {
+      console.error("Fallback also failed:", fallbackError)
+      return []
+    }
   }
 }
 
@@ -446,16 +458,16 @@ export async function fetchCustomDomainsData(env: Bindings): Promise<HostEntry[]
   }
 }
 
-// 获取包含自定义域名的完整 hosts 数据
-export async function getCompleteHostsData(env: Bindings): Promise<HostEntry[]> {
+// 获取包含自定义域名的完整 hosts 数据 - 优化缓存策略
+export async function getCompleteHostsData(env: Bindings, forceRefresh: boolean = false): Promise<HostEntry[]> {
   try {
-    console.log("Fetching complete hosts data (GitHub + Custom)")
+    console.log(`Fetching complete hosts data (GitHub + Custom)${forceRefresh ? ' with force refresh' : ''}`)
     
-    // 获取 GitHub 域名数据
-    const githubEntries = await getHostsData(env)
+    // 获取 GitHub 域名数据，传递 forceRefresh 参数
+    const githubEntries = await getHostsData(env, forceRefresh)
     console.log(`GitHub entries: ${githubEntries.length}`)
     
-    // 获取自定义域名数据
+    // 获取自定义域名数据（自定义域名通常数量少，可以每次获取）
     const customEntries = await fetchCustomDomainsData(env)
     console.log(`Custom entries: ${customEntries.length}`)
     
@@ -478,7 +490,7 @@ export async function getCompleteHostsData(env: Bindings): Promise<HostEntry[]> 
     return allEntries
   } catch (error) {
     console.error("Error getting complete hosts data:", error)
-    return await getHostsData(env) // 降级到只返回 GitHub 数据
+    return await getHostsData(env, forceRefresh) // 降级到只返回 GitHub 数据
   }
 }
 

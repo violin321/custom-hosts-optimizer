@@ -25,6 +25,34 @@ function showMessage(message, type = 'info') {
   }, 3000)
 }
 
+// 加载缓存状态
+async function loadCacheStatus() {
+  try {
+    const response = await fetch(`${baseUrl}/api/cache/status`)
+    if (response.ok) {
+      const status = await response.json()
+      const statusElement = document.getElementById('hostsStatus')
+      
+      if (statusElement && status.cached) {
+        const ageText = status.ageMinutes < 60 
+          ? `${status.ageMinutes} 分钟前` 
+          : `${Math.round(status.ageMinutes / 60)} 小时前`
+        
+        const validText = status.isValid 
+          ? `缓存有效，${ageText}更新` 
+          : '缓存已过期，建议刷新'
+        
+        statusElement.textContent = validText
+        statusElement.className = status.isValid ? 'status-text valid' : 'status-text expired'
+        
+        console.log(`缓存状态: ${validText}, 域名数: ${status.domainCount}`)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load cache status:', error)
+  }
+}
+
 // 加载 hosts 内容
 async function loadHosts() {
   console.log('开始加载 hosts 内容...')
@@ -56,6 +84,9 @@ async function loadHosts() {
     }
     
     showMessage('Hosts 内容加载成功', 'success')
+    
+    // 重新加载缓存状态
+    await loadCacheStatus()
     
   } catch (error) {
     console.error('加载 hosts 失败:', error)
@@ -205,6 +236,9 @@ function initPage() {
   console.log('开始加载初始 hosts 内容...')
   loadHosts()
   
+  // 每5分钟更新一次缓存状态
+  setInterval(loadCacheStatus, 5 * 60 * 1000)
+  
   console.log('=== 页面初始化完成 ===')
 }
 
@@ -220,5 +254,6 @@ if (document.readyState === 'loading') {
 window.debugFunctions = {
   loadHosts,
   optimizeAllDomains,
-  showMessage
+  showMessage,
+  loadCacheStatus
 }

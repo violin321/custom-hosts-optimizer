@@ -12,6 +12,7 @@ import {
   fetchCustomDomainsData,
   fetchLatestHostsData,
   fetchIPFromMultipleDNS,
+  storeData,
   type HostEntry,
 } from "./services/hosts"
 import { handleSchedule } from "./scheduled"
@@ -590,7 +591,12 @@ app.get("/", async (c) => {
 
 app.get("/hosts.json", async (c) => {
   try {
-    const allData = await getCompleteHostsData(c.env)
+    // 检查是否强制刷新缓存
+    const forceRefresh = c.req.query('refresh') === 'true'
+    
+    console.log(`JSON request - refresh: ${forceRefresh}`)
+    
+    const allData = await getCompleteHostsData(c.env, forceRefresh)
     
     // 分离 GitHub 域名和自定义域名
     const githubData = []
@@ -604,12 +610,18 @@ app.get("/hosts.json", async (c) => {
       }
     }
 
+    // 添加缓存控制头，参考 TinsFox 最佳实践
+    c.header('Cache-Control', forceRefresh ? 'no-cache' : 'public, max-age=3600') // 1小时缓存
+    c.header('X-Cache-Status', forceRefresh ? 'MISS' : 'HIT')
+
     return c.json({
       entries: allData,
       total: allData.length,
       github: githubData,
       custom: customData,
-      includeCustom: true
+      includeCustom: true,
+      timestamp: new Date().toISOString(),
+      cacheStatus: forceRefresh ? 'refreshed' : 'cached'
     })
   } catch (error) {
     console.error("Error in /hosts.json:", error)
@@ -619,7 +631,8 @@ app.get("/hosts.json", async (c) => {
       github: [],
       custom: [],
       includeCustom: true,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
+      timestamp: new Date().toISOString()
     }, 500)
   }
 })
@@ -627,6 +640,7 @@ app.get("/hosts.json", async (c) => {
 app.get("/hosts", async (c) => {
   try {
     // 获取查询参数
+    const forceRefresh = c.req.query('refresh') === 'true'
     const optimizeParam = c.req.query('optimize')
     const customParam = c.req.query('custom')
     
@@ -634,22 +648,27 @@ app.get("/hosts", async (c) => {
     const enableOptimization = optimizeParam !== 'false'
     const includeCustomDomains = customParam !== 'false'
     
-    console.log(`Hosts request - optimize: ${enableOptimization}, custom: ${includeCustomDomains}`)
+    console.log(`Hosts request - refresh: ${forceRefresh}, optimize: ${enableOptimization}, custom: ${includeCustomDomains}`)
     
     let allData: HostEntry[]
     
     if (includeCustomDomains) {
       // 包含自定义域名的完整数据
-      allData = await getCompleteHostsData(c.env)
+      allData = await getCompleteHostsData(c.env, forceRefresh)
       console.log(`合并后总数据 (包含自定义域名): ${allData.length} 条`)
     } else {
       // 仅 GitHub 域名数据
-      allData = await getHostsData(c.env)
+      allData = await getHostsData(c.env, forceRefresh)
       console.log(`GitHub 数据: ${allData.length} 条`)
     }
     
     const hostsContent = formatHostsFile(allData)
     console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
+    
+    // 添加缓存控制头
+    c.header('Cache-Control', forceRefresh ? 'no-cache' : 'public, max-age=3600') // 1小时缓存
+    c.header('X-Cache-Status', forceRefresh ? 'MISS' : 'HIT')
+    c.header('Content-Type', 'text/plain; charset=utf-8')
     
     return c.text(hostsContent)
   } catch (error) {
@@ -983,6 +1002,76 @@ app.get("/debug", async (c) => {
     return c.json({ 
       error: "Debug failed: " + (error instanceof Error ? error.message : String(error)) 
     }, 500)
+  }
+})
+
+// 缓存管理 API - 参考 TinsFox/github-hosts 最佳实践
+app.get("/api/cache/status", async (c) => {
+  try {
+    const kvData = (await c.env.custom_hosts.get("domain_data", {
+      type: "json",
+    })) as any
+
+    if (!kvData) {
+      return c.json({
+        cached: false,
+        message: "No cache data found"
+      })
+    }
+
+    const lastUpdated = new Date(kvData.lastUpdated)
+    const now = new Date()
+    const ageMinutes = Math.round((now.getTime() - lastUpdated.getTime()) / 60000)
+    const cacheValidTime = 6 * 60 // 6小时
+    const isValid = ageMinutes < cacheValidTime
+
+    return c.json({
+      cached: true,
+      lastUpdated: kvData.lastUpdated,
+      ageMinutes,
+      isValid,
+      validUntilMinutes: Math.max(0, cacheValidTime - ageMinutes),
+      domainCount: Object.keys(kvData.domain_data || {}).length,
+      updateCount: kvData.updateCount || 0,
+      version: kvData.version || "unknown"
+    })
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
+})
+
+app.post("/api/cache/refresh", async (c) => {
+  try {
+    console.log("Manual cache refresh requested")
+    
+    // 强制刷新 GitHub 域名数据
+    const newEntries = await fetchLatestHostsData()
+    await storeData(c.env, newEntries)
+    
+    return c.json({
+      message: "Cache refreshed successfully",
+      entriesCount: newEntries.length,
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error("Error refreshing cache:", error)
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
+})
+
+app.delete("/api/cache", async (c) => {
+  try {
+    console.log("Cache clear requested")
+    
+    await c.env.custom_hosts.delete("domain_data")
+    
+    return c.json({
+      message: "Cache cleared successfully",
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    console.error("Error clearing cache:", error)
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
   }
 })
 
