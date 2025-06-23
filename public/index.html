@@ -52,7 +52,6 @@
   <!-- 主功能选项卡 -->
   <div class="tabs">
     <div class="tab active" data-tab="hosts">Hosts 文件</div>
-    <div class="tab" data-tab="custom">自定义域名</div>
     <div class="tab" data-tab="api">API 文档</div>
     <div class="tab" data-tab="help">使用帮助</div>
   </div>
@@ -98,47 +97,7 @@
     </div>
   </div>
 
-  <!-- 自定义域名选项卡 -->
-  <div class="tab-content" id="custom-tab">
-    <h2>🎯 自定义域名管理</h2>
-    <p>添加您需要加速的自定义域名，系统将自动为其进行 IP 优选。</p>
-    
-    <div class="custom-domain-form">
-      <h3>单个添加域名</h3>
-      <div class="form-group">
-        <label for="domainInput">域名:</label>
-        <input type="text" id="domainInput" placeholder="例如: example.com">
-      </div>
-      <div class="form-group">
-        <label for="descriptionInput">描述 (可选):</label>
-        <input type="text" id="descriptionInput" placeholder="域名用途描述">
-      </div>
-      <button id="addDomain" class="btn btn-primary">添加域名</button>
-    </div>
-
-    <div class="custom-domain-form">
-      <h3>批量添加域名</h3>
-      <div class="form-group">
-        <label for="batchDomainsInput">域名列表:</label>
-        <textarea id="batchDomainsInput" rows="8" placeholder="支持多种格式：
-example1.com
-example2.com,网站描述
-example3.com 另一个网站
-github.com,GitHub 官网
-
-每行一个域名，可选择添加描述"></textarea>
-        <small class="help-text">💡 支持多种格式：域名、域名,描述、域名 描述。每行一个域名。</small>
-      </div>
-      <button id="addBatchDomains" class="btn btn-primary">批量添加</button>
-    </div>
-
-    <div class="custom-domains-list">
-      <h3>已添加的自定义域名</h3>
-      <div id="customDomainsList">
-        <p>请输入 API Key 查看自定义域名列表</p>
-      </div>
-    </div>
-  </div>
+  <!-- 自定义域名选项卡已移至管理后台 -->
 
   <!-- API 文档选项卡 -->
   <div class="tab-content" id="api-tab">

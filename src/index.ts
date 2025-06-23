@@ -18,16 +18,11 @@ import { Bindings } from "./types"
 const app = new Hono<{ Bindings: Bindings }>()
 
 // 管理员认证中间件
-const adminAuth = (c: any, next: any) => {
-  const adminUsername = c.env.ADMIN_USERNAME || "admin"
-  const adminPassword = c.env.ADMIN_PASSWORD || "admin123"
-  
-  return basicAuth({
-    username: adminUsername,
-    password: adminPassword,
-    realm: "Admin Panel"
-  })(c, next)
-}
+const adminAuth = basicAuth({
+  username: "admin", 
+  password: "admin123",
+  realm: "管理后台认证",
+})
 
 // 管理后台路由组
 const admin = new Hono<{ Bindings: Bindings }>()
@@ -160,8 +155,14 @@ admin.get("/", async (c) => {
         async function loadDomains() {
             try {
                 const response = await fetch('/api/custom-domains');
-                const domains = await response.json();
+                const domainsData = await response.json();
                 const container = document.getElementById('domain-list');
+                
+                // 将对象转换为数组
+                const domains = Object.entries(domainsData).map(([domain, info]) => ({
+                    domain,
+                    ...info
+                }));
                 
                 if (domains.length === 0) {
                     container.innerHTML = '<p>暂无自定义域名</p>';
