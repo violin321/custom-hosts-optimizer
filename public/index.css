@@ -609,25 +609,4 @@ label a:hover {
   opacity: 0.8;
 }
 
-/* 管理后台按钮样式 */
-.admin-link {
-  margin-top: 15px;
-}
 
-.admin-button {
-  display: inline-block;
-  padding: 8px 16px;
-  background-color: white;
-  color: var(--primary-color);
-  border-radius: var(--radius-md);
-  font-weight: bold;
-  text-decoration: none;
-  transition: var(--transition);
-  box-shadow: var(--shadow-sm);
-}
-
-.admin-button:hover {
-  background-color: rgba(255, 255, 255, 0.9);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}

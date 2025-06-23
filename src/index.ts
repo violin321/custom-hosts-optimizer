@@ -128,7 +128,7 @@ const adminAuth = async (c: any, next: any) => {
             const password = document.getElementById('password').value;
             
             // 构建带认证参数的URL
-            const adminUrl = '/admin?user=' + encodeURIComponent(username) + '&pass=' + encodeURIComponent(password);
+            const adminUrl = '/admin-x7k9m3q2?user=' + encodeURIComponent(username) + '&pass=' + encodeURIComponent(password);
             window.location.href = adminUrl;
         });
         
@@ -485,7 +485,7 @@ admin.get("/", async (c) => {
 })
 
 // 将管理后台路由组应用到应用中，并使用认证中间件
-app.route("/admin", admin.use("*", adminAuth))
+app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
 app.get("/", async (c) => {
   const html = await c.env.ASSETS.get("index.html")
