@@ -95,9 +95,57 @@ async function loadHosts() {
   }
 }
 
-// 全域名优选
+// 强制刷新并加载 hosts 内容
+async function loadHostsWithRefresh() {
+  console.log('开始强制刷新 hosts 内容...')
+  
+  const hostsElement = document.getElementById("hosts")
+  if (!hostsElement) {
+    console.error('找不到 hosts 元素')
+    showMessage('页面元素加载失败', 'error')
+    return
+  }
+  
+  try {
+    hostsElement.textContent = "正在刷新 hosts 内容..."
+    
+    // 添加 refresh=true 参数强制刷新缓存
+    const response = await fetch(`${baseUrl}/hosts?refresh=true`)
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+    
+    const hostsContent = await response.text()
+    console.log(`成功获取刷新后的 hosts 内容，长度: ${hostsContent.length}`)
+    
+    hostsElement.textContent = hostsContent
+    
+    // 更新状态 - 显示刷新时间
+    const statusElement = document.getElementById('hostsStatus')
+    if (statusElement) {
+      const now = new Date()
+      const timeStr = now.toLocaleTimeString()
+      statusElement.textContent = `已强制刷新 (${timeStr})`
+      statusElement.className = 'status-text refreshed'
+    }
+    
+    showMessage('Hosts 内容强制刷新成功', 'success')
+    
+    // 延迟重新加载缓存状态，显示最新信息
+    setTimeout(async () => {
+      await loadCacheStatus()
+    }, 500)
+    
+  } catch (error) {
+    console.error('强制刷新 hosts 失败:', error)
+    hostsElement.textContent = "刷新失败，请重试"
+    showMessage(`刷新失败: ${error.message}`, 'error')
+  }
+}
+
+// 全域名优选 - 主页版本（强制刷新缓存）
 async function optimizeAllDomains() {
-  console.log('开始全域名优选...')
+  console.log('开始主页立即刷新...')
   
   const refreshBtn = document.getElementById('refreshHosts')
   const statusElement = document.getElementById('hostsStatus')
@@ -112,44 +160,27 @@ async function optimizeAllDomains() {
   
   try {
     // 更新按钮状态
-    refreshBtn.textContent = '正在优选...'
+    refreshBtn.textContent = '正在刷新...'
     refreshBtn.disabled = true
     
     if (statusElement) {
-      statusElement.textContent = '正在执行全域名优选...'
+      statusElement.textContent = '正在强制刷新缓存...'
     }
     
-    showMessage('开始执行全域名优选，请稍候...', 'info')
+    showMessage('开始强制刷新缓存，请稍候...', 'info')
     
-    const response = await fetch(`${baseUrl}/api/optimize-all`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
+    // 直接强制刷新 hosts 内容，而不是调用管理 API
+    console.log('强制刷新 hosts 内容...')
+    await loadHostsWithRefresh()
     
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-    
-    const result = await response.json()
-    console.log('优选结果:', result)
-    
-    showMessage(
-      `全域名优选完成！成功 ${result.optimized} 个，失败 ${result.failed} 个`, 
-      'success'
-    )
-    
-    // 等待1秒后重新加载 hosts
-    setTimeout(() => {
-      console.log('优选完成，重新加载 hosts...')
-      loadHosts()
-    }, 1000)
+    showMessage('缓存刷新完成！已获取最新 hosts 内容', 'success')
     
   } catch (error) {
-    console.error('全域名优选失败:', error)
-    showMessage(`优选失败: ${error.message}`, 'error')
+    console.error('刷新失败:', error)
+    showMessage(`刷新失败: ${error.message}`, 'error')
     
     if (statusElement) {
-      statusElement.textContent = '优选失败'
+      statusElement.textContent = '刷新失败'
     }
   } finally {
     // 恢复按钮状态
@@ -280,6 +311,7 @@ if (document.readyState === 'loading') {
 // 导出函数供调试使用
 window.debugFunctions = {
   loadHosts,
+  loadHostsWithRefresh,
   optimizeAllDomains,
   showMessage,
   loadCacheStatus
