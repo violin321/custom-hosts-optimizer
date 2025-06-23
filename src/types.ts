@@ -15,6 +15,7 @@ export interface CustomDomain {
   description?: string
   addedAt: string
   lastUpdated?: string
+  ip?: string
 }
 
 export interface CustomDomainList {

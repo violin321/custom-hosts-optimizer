@@ -383,13 +383,20 @@ export async function addCustomDomain(env: Bindings, domain: string, description
   try {
     const customDomains = await getCustomDomains(env)
     
+    // 立即测试域名解析
+    console.log(`正在测试新添加的域名: ${domain}`)
+    const testIp = await fetchIPFromIPAddress(domain)
+    console.log(`域名 ${domain} 解析测试结果: ${testIp || '解析失败'}`)
+    
     customDomains[domain] = {
       domain,
       description,
-      addedAt: new Date().toISOString()
+      addedAt: new Date().toISOString(),
+      ip: testIp || undefined // 保存测试解析的IP
     }
     
     await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
+    console.log(`域名 ${domain} 已成功添加到自定义域名列表`)
     return true
   } catch (error) {
     console.error("Error adding custom domain:", error)
@@ -446,6 +453,8 @@ export async function fetchCustomDomainsData(env: Bindings, useOptimization: boo
     const customDomains = await getCustomDomains(env)
     const domains = Object.keys(customDomains)
     
+    console.log(`fetchCustomDomainsData: 找到 ${domains.length} 个自定义域名:`, domains)
+    
     if (domains.length === 0) {
       return []
     }
@@ -455,13 +464,19 @@ export async function fetchCustomDomainsData(env: Bindings, useOptimization: boo
     for (const domain of domains) {
       let ip: string | null = null
       
+      console.log(`正在处理自定义域名: ${domain}, 优化模式: ${useOptimization}`)
+      
       if (useOptimization) {
         const optimized = await optimizeDomainIP(domain)
         if (optimized) {
           ip = optimized.ip
+          console.log(`域名 ${domain} 优选结果: ${ip} (${optimized.responseTime}ms)`)
+        } else {
+          console.warn(`域名 ${domain} 优选失败`)
         }
       } else {
         ip = await fetchIPFromIPAddress(domain)
+        console.log(`域名 ${domain} 标准解析结果: ${ip}`)
       }
       
       // 如果无法解析 IP，使用占位符表示未解析
@@ -472,6 +487,8 @@ export async function fetchCustomDomainsData(env: Bindings, useOptimization: boo
         entries.push([ip, domain])
       }
     }
+    
+    console.log(`fetchCustomDomainsData: 返回 ${entries.length} 个条目:`, entries.map(([ip, domain]) => `${domain}=${ip}`))
     
     return entries
   } catch (error) {

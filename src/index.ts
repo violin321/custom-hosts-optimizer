@@ -11,6 +11,8 @@ import {
   optimizeCustomDomain,
   fetchCustomDomainsData,
   fetchLatestHostsData,
+  fetchIPFromIPAddress,
+  optimizeDomainIP,
 } from "./services/hosts"
 import { handleSchedule } from "./scheduled"
 import { Bindings } from "./types"
@@ -770,15 +772,24 @@ app.get("/hosts", async (c) => {
   const useOptimization = c.req.query("optimize") === "true"
   const includeCustom = c.req.query("custom") !== "false"
 
+  console.log(`/hosts请求 - 优化模式: ${useOptimization}, 包含自定义域名: ${includeCustom}`)
+
   const githubData = await getHostsData(c.env, useOptimization)
+  console.log(`GitHub数据获取完成: ${githubData.length} 条`)
+  
   let customData: any[] = []
 
   if (includeCustom) {
     customData = await fetchCustomDomainsData(c.env, useOptimization)
+    console.log(`自定义域名数据获取完成: ${customData.length} 条`)
   }
 
   const allData = [...githubData, ...customData]
+  console.log(`合并后总数据: ${allData.length} 条 (GitHub: ${githubData.length}, 自定义: ${customData.length})`)
+  
   const hostsContent = formatHostsFile(allData)
+  console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
+  
   return c.text(hostsContent)
 })
 
@@ -932,6 +943,51 @@ app.delete("/api/custom-domains", async (c) => {
   } catch (error) {
     console.error("Error clearing custom domains:", error)
     return c.json({ error: "Failed to clear custom domains" }, 500)
+  }
+})
+
+// 测试自定义域名解析的API
+app.get("/test-custom-domains", async (c) => {
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    const domains = Object.keys(customDomains)
+    
+    if (domains.length === 0) {
+      return c.json({
+        message: "没有找到自定义域名",
+        domains: [],
+        tests: []
+      })
+    }
+    
+    const tests = []
+    
+    for (const domain of domains) {
+      console.log(`测试域名: ${domain}`)
+      
+      const standardIp = await fetchIPFromIPAddress(domain)
+      const optimizedResult = await optimizeDomainIP(domain)
+      
+      tests.push({
+        domain,
+        standardResolution: standardIp || '解析失败',
+        optimizedResolution: optimizedResult ? {
+          ip: optimizedResult.ip,
+          responseTime: optimizedResult.responseTime
+        } : '优选失败',
+        storedInfo: customDomains[domain]
+      })
+    }
+    
+    return c.json({
+      message: `测试了 ${domains.length} 个自定义域名`,
+      domains,
+      tests
+    })
+  } catch (error) {
+    return c.json({ 
+      error: "测试失败: " + (error instanceof Error ? error.message : String(error)) 
+    }, 500)
   }
 })
 
