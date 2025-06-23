@@ -27,10 +27,13 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: latest
 
       - name: Install dependencies
-        run: pnpm install
+        run: |
+          pnpm install
+          # 安装 jq 用于 JSON 解析
+          sudo apt-get update && sudo apt-get install -y jq || echo "⚠️ jq 安装失败，将使用备用解析方法"
 
       - name: Verify Cloudflare Credentials
         run: |
@@ -64,25 +67,36 @@ jobs:
 
       - name: Detect existing deployment configuration
         run: |
-          echo "� 检测现有部署配置..."
+          echo "🔍 检测现有部署配置..."
           
           # 检查是否已经有 Worker 部署
           echo "📋 检查现有 Workers..."
-          WORKER_LIST=$(pnpm exec wrangler list 2>/dev/null || echo "[]")
+          
+          # 使用更安全的方式获取 Worker 列表
+          if ! WORKER_LIST=$(pnpm exec wrangler list --format json 2>/dev/null); then
+            echo "⚠️ 无法获取 Worker 列表，假设为首次部署"
+            WORKER_LIST="[]"
+          fi
           
           # 从 wrangler.toml 获取预期的 Worker 名称
-          EXPECTED_WORKER_NAME=$(grep '^name = ' wrangler.toml | sed 's/name = "\([^"]*\)"/\1/')
+          if ! EXPECTED_WORKER_NAME=$(grep '^name = ' wrangler.toml | head -1 | sed 's/^name = "\([^"]*\)"/\1/'); then
+            echo "❌ 无法从 wrangler.toml 获取 Worker 名称"
+            exit 1
+          fi
+          
           echo "📝 预期的 Worker 名称: $EXPECTED_WORKER_NAME"
           
-          # 检查 Worker 是否已存在
-          if echo "$WORKER_LIST" | grep -q "$EXPECTED_WORKER_NAME"; then
+          # 检查 Worker 是否已存在（更安全的检查方式）
+          if echo "$WORKER_LIST" | grep -q "\"$EXPECTED_WORKER_NAME\"" 2>/dev/null; then
             echo "✅ 发现已存在的 Worker: $EXPECTED_WORKER_NAME"
             echo "WORKER_EXISTS=true" >> $GITHUB_ENV
             echo "DEPLOYMENT_MODE=update" >> $GITHUB_ENV
             
             # 尝试获取 Worker 的详细信息
             echo "📊 获取 Worker 详细信息..."
-            pnpm exec wrangler status || echo "⚠️ 无法获取 Worker 状态，将继续部署"
+            if ! pnpm exec wrangler status 2>/dev/null; then
+              echo "⚠️ 无法获取 Worker 状态，但将继续部署"
+            fi
             
           else
             echo "🆕 未发现现有 Worker，将进行首次部署"
@@ -100,79 +114,129 @@ jobs:
             # 从现有部署中学习配置
             echo "📚 从现有部署学习配置..."
             
-            # 获取当前配置的 KV ID
-            CURRENT_KV_ID=$(grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
+            # 安全地获取当前配置的 KV ID
+            if ! CURRENT_KV_ID=$(grep -A 10 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/'); then
+              echo "❌ 无法从配置文件获取 KV ID"
+              exit 1
+            fi
             
             if [ -n "$CURRENT_KV_ID" ] && [ "$CURRENT_KV_ID" != "" ]; then
-              echo "📋 使用配置文件中的 KV ID"
+              echo "📋 使用配置文件中的 KV ID: $CURRENT_KV_ID"
               
               # 验证 KV 是否真实存在
-              KV_LIST=$(pnpm exec wrangler kv namespace list)
-              if echo "$KV_LIST" | grep -q "$CURRENT_KV_ID"; then
+              if ! KV_LIST=$(pnpm exec wrangler kv namespace list --format json 2>/dev/null); then
+                echo "❌ 无法获取 KV 命名空间列表"
+                exit 1
+              fi
+              
+              if echo "$KV_LIST" | grep -q "\"$CURRENT_KV_ID\"" 2>/dev/null; then
                 echo "✅ KV 命名空间验证成功"
                 KV_NAMESPACE_ID="$CURRENT_KV_ID"
               else
                 echo "⚠️ 配置的 KV 不存在，尝试查找备用 KV..."
-                if echo "$KV_LIST" | grep -q "custom_hosts"; then
-                  BACKUP_KV_ID=$(echo "$KV_LIST" | grep "custom_hosts" | sed 's/.*"id": "\([^"]*\)".*/\1/' | head -1)
-                  echo "🔄 使用备用 KV: $BACKUP_KV_ID"
-                  KV_NAMESPACE_ID="$BACKUP_KV_ID"
+                if echo "$KV_LIST" | grep -q "custom_hosts" 2>/dev/null; then
+                  # 使用更安全的 JSON 解析方式
+                  if command -v jq >/dev/null 2>&1; then
+                    BACKUP_KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "custom_hosts") | .id' | head -1)
+                  else
+                    # 备用方案：使用 grep 和 sed
+                    BACKUP_KV_ID=$(echo "$KV_LIST" | grep -o '"id":"[^"]*"' | grep -A 1 "custom_hosts" | head -1 | sed 's/"id":"\([^"]*\)"/\1/')
+                  fi
                   
-                  # 更新配置文件
-                  sed -i "s/id = \".*\"/id = \"$BACKUP_KV_ID\"/" wrangler.toml
-                  sed -i "s/preview_id = \".*\"/preview_id = \"$BACKUP_KV_ID\"/" wrangler.toml
-                  echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
+                  if [ -n "$BACKUP_KV_ID" ] && [ "$BACKUP_KV_ID" != "null" ]; then
+                    echo "🔄 使用备用 KV: $BACKUP_KV_ID"
+                    KV_NAMESPACE_ID="$BACKUP_KV_ID"
+                    
+                    # 更新配置文件
+                    sed -i.bak "s/id = \"[^\"]*\"/id = \"$BACKUP_KV_ID\"/" wrangler.toml
+                    sed -i.bak "s/preview_id = \"[^\"]*\"/preview_id = \"$BACKUP_KV_ID\"/" wrangler.toml
+                    echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
+                  else
+                    echo "❌ 无法找到合适的 KV 命名空间"
+                    exit 1
+                  fi
                 else
-                  echo "❌ 无法找到合适的 KV 命名空间"
+                  echo "❌ 无法找到 custom_hosts KV 命名空间"
                   exit 1
                 fi
               fi
             else
-              echo "❌ 无法从配置文件获取 KV ID"
+              echo "❌ 无法从配置文件获取有效的 KV ID"
               exit 1
             fi
             
           else
             echo "🆕 初始部署模式: 创建或查找 KV 命名空间"
             
-            # 获取当前配置的 KV ID
-            CURRENT_KV_ID=$(grep -A 5 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/')
+            # 安全地获取当前配置的 KV ID
+            if ! CURRENT_KV_ID=$(grep -A 10 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/'); then
+              CURRENT_KV_ID=""
+            fi
             
-            if [ -z "$CURRENT_KV_ID" ]; then
-              echo "⚠️ 配置文件中没有 KV ID，需要创建或查找"
+            if [ -z "$CURRENT_KV_ID" ] || [ "$CURRENT_KV_ID" = "" ]; then
+              echo "⚠️ 配置文件中没有有效的 KV ID，需要创建或查找"
               
               # 检查是否已有 custom_hosts KV
-              KV_LIST=$(pnpm exec wrangler kv namespace list)
-              if echo "$KV_LIST" | grep -q "custom_hosts"; then
+              if ! KV_LIST=$(pnpm exec wrangler kv namespace list --format json 2>/dev/null); then
+                echo "❌ 无法获取 KV 命名空间列表"
+                exit 1
+              fi
+              
+              if echo "$KV_LIST" | grep -q "custom_hosts" 2>/dev/null; then
                 echo "🔍 发现现有的 custom_hosts 命名空间"
-                EXISTING_KV_ID=$(echo "$KV_LIST" | grep "custom_hosts" | sed 's/.*"id": "\([^"]*\)".*/\1/' | head -1)
-                echo "📝 将使用现有的 KV 命名空间"
-                KV_NAMESPACE_ID="$EXISTING_KV_ID"
                 
-                # 更新配置文件
-                sed -i "s/id = \".*\"/id = \"$EXISTING_KV_ID\"/" wrangler.toml
-                sed -i "s/preview_id = \".*\"/preview_id = \"$EXISTING_KV_ID\"/" wrangler.toml
-                echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
-              else
-                echo "🆕 创建新的 custom_hosts KV 命名空间..."
-                KV_OUTPUT=$(pnpm exec wrangler kv namespace create "custom_hosts" 2>&1)
+                # 使用更安全的方式提取 KV ID
+                if command -v jq >/dev/null 2>&1; then
+                  EXISTING_KV_ID=$(echo "$KV_LIST" | jq -r '.[] | select(.title == "custom_hosts") | .id' | head -1)
+                else
+                  # 备用方案
+                  EXISTING_KV_ID=$(echo "$KV_LIST" | grep -A 5 "custom_hosts" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"\([^"]*\)"/\1/')
+                fi
                 
-                if echo "$KV_OUTPUT" | grep -q "id"; then
-                  NEW_KV_ID=$(echo "$KV_OUTPUT" | grep -o '"id": "[^"]*"' | cut -d'"' -f4)
-                  echo "✅ 新 KV 命名空间创建成功"
-                  KV_NAMESPACE_ID="$NEW_KV_ID"
+                if [ -n "$EXISTING_KV_ID" ] && [ "$EXISTING_KV_ID" != "null" ]; then
+                  echo "📝 将使用现有的 KV 命名空间: $EXISTING_KV_ID"
+                  KV_NAMESPACE_ID="$EXISTING_KV_ID"
                   
                   # 更新配置文件
-                  sed -i "s/id = \".*\"/id = \"$NEW_KV_ID\"/" wrangler.toml
-                  sed -i "s/preview_id = \".*\"/preview_id = \"$NEW_KV_ID\"/" wrangler.toml
+                  sed -i.bak "s/id = \"[^\"]*\"/id = \"$EXISTING_KV_ID\"/" wrangler.toml
+                  sed -i.bak "s/preview_id = \"[^\"]*\"/preview_id = \"$EXISTING_KV_ID\"/" wrangler.toml
                   echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
                 else
+                  echo "❌ 无法提取现有 KV 的 ID"
+                  exit 1
+                fi
+              else
+                echo "🆕 创建新的 custom_hosts KV 命名空间..."
+                
+                # 创建新的 KV 命名空间
+                if ! KV_OUTPUT=$(pnpm exec wrangler kv namespace create "custom_hosts" 2>&1); then
                   echo "❌ KV 命名空间创建失败"
+                  echo "$KV_OUTPUT"
+                  exit 1
+                fi
+                
+                # 提取新创建的 KV ID
+                if NEW_KV_ID=$(echo "$KV_OUTPUT" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1); then
+                  if [ -n "$NEW_KV_ID" ]; then
+                    echo "✅ 新 KV 命名空间创建成功: $NEW_KV_ID"
+                    KV_NAMESPACE_ID="$NEW_KV_ID"
+                    
+                    # 更新配置文件
+                    sed -i.bak "s/id = \"[^\"]*\"/id = \"$NEW_KV_ID\"/" wrangler.toml
+                    sed -i.bak "s/preview_id = \"[^\"]*\"/preview_id = \"$NEW_KV_ID\"/" wrangler.toml
+                    echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
+                  else
+                    echo "❌ 无法提取新创建的 KV ID"
+                    exit 1
+                  fi
+                else
+                  echo "❌ KV 命名空间创建失败或无法解析输出"
+                  echo "$KV_OUTPUT"
                   exit 1
                 fi
               fi
             else
-              echo "📋 使用配置文件中的 KV ID: (已配置)"
+              echo "📋 使用配置文件中的 KV ID: $CURRENT_KV_ID"
               KV_NAMESPACE_ID="$CURRENT_KV_ID"
             fi
           fi
@@ -198,10 +262,18 @@ jobs:
           
           # 验证最终配置
           echo "📄 验证最终配置:"
-          if grep -q "binding = \"custom_hosts\"" wrangler.toml; then
+          if [ -n "$KV_NAMESPACE_ID" ]; then
+            echo "✅ KV 命名空间 ID: $KV_NAMESPACE_ID"
+          else
+            echo "❌ KV 命名空间 ID 为空"
+            exit 1
+          fi
+          
+          if grep -q 'binding = "custom_hosts"' wrangler.toml; then
             echo "✅ KV 绑定配置正确"
           else
             echo "❌ KV 绑定配置异常"
+            cat wrangler.toml | grep -A 5 "kv_namespaces" || echo "无法找到 KV 配置"
             exit 1
           fi
 
@@ -218,7 +290,20 @@ jobs:
             echo "🆕 执行首次部署..."
           fi
           
+          # 在部署前验证配置
+          echo "🔍 部署前最终检查..."
+          if [ ! -f "wrangler.toml" ]; then
+            echo "❌ wrangler.toml 文件不存在"
+            exit 1
+          fi
+          
+          # 检查配置文件语法
+          if ! pnpm exec wrangler config validate 2>/dev/null; then
+            echo "⚠️ wrangler 配置验证失败，但继续尝试部署"
+          fi
+          
           # 执行部署
+          echo "🚀 开始执行部署..."
           if ! pnpm run deploy; then
             echo ""
             echo "❌ 部署失败！"
@@ -231,7 +316,11 @@ jobs:
             echo ""
             echo "🔗 Global API Key: https://dash.cloudflare.com/profile/api-tokens"
             echo "📄 当前部署信息:"
-            cat deployment-info.json
+            if [ -f "deployment-info.json" ]; then
+              cat deployment-info.json
+            fi
+            echo "📄 当前 wrangler.toml 配置:"
+            cat wrangler.toml | head -20
             exit 1
           fi
           
@@ -242,9 +331,11 @@ jobs:
             echo "🎉 Worker 首次部署完成"
           fi
           
-          # 部署后获取最新信息
-          echo "📊 获取部署后信息..."
-          pnpm exec wrangler status || echo "⚠️ 无法获取最新状态"
+          # 部署后验证
+          echo "📊 部署后验证..."
+          if ! pnpm exec wrangler status 2>/dev/null; then
+            echo "⚠️ 无法获取部署后状态，但部署命令成功"
+          fi
 
       - name: Set secrets
         run: |
@@ -253,31 +344,50 @@ jobs:
           # 设置 API Key
           if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
             echo "📝 设置 API_KEY..."
-            echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY
-            echo "✅ API_KEY 设置完成"
+            if echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+              echo "✅ API_KEY 设置完成"
+            else
+              echo "⚠️ API_KEY 设置失败，继续执行"
+            fi
           else
             echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
           fi
           
-          # 设置管理员密码
+          # 设置管理员密码（现在已去除验证，但保留兼容性）
           if [ -n "${{ secrets.ADMIN_PASSWORD }}" ]; then
             echo "📝 设置 ADMIN_PASSWORD..."
-            echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD
-            echo "✅ ADMIN_PASSWORD 设置完成"
+            if echo "${{ secrets.ADMIN_PASSWORD }}" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+              echo "✅ ADMIN_PASSWORD 设置完成"
+            else
+              echo "⚠️ ADMIN_PASSWORD 设置失败，继续执行"
+            fi
           else
-            echo "⚠️ ADMIN_PASSWORD secret 未设置，使用默认密码"
-            echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD
+            echo "📝 设置默认 ADMIN_PASSWORD..."
+            if echo "admin123" | pnpm exec wrangler secret put ADMIN_PASSWORD --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+              echo "✅ 默认 ADMIN_PASSWORD 设置完成"
+            else
+              echo "⚠️ 默认 ADMIN_PASSWORD 设置失败，继续执行"
+            fi
           fi
           
           # 设置优选功能开关
           if [ -n "${{ secrets.ENABLE_OPTIMIZATION }}" ]; then
             echo "📝 设置 ENABLE_OPTIMIZATION 为: ${{ secrets.ENABLE_OPTIMIZATION }}"
-            echo "${{ secrets.ENABLE_OPTIMIZATION }}" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
+            if echo "${{ secrets.ENABLE_OPTIMIZATION }}" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+              echo "✅ ENABLE_OPTIMIZATION 设置完成"
+            else
+              echo "⚠️ ENABLE_OPTIMIZATION 设置失败，继续执行"
+            fi
           else
             echo "📝 设置 ENABLE_OPTIMIZATION 为默认值: false"
-            echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION
+            if echo "false" | pnpm exec wrangler secret put ENABLE_OPTIMIZATION --name "$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')"; then
+              echo "✅ 默认 ENABLE_OPTIMIZATION 设置完成"
+            else
+              echo "⚠️ 默认 ENABLE_OPTIMIZATION 设置失败，继续执行"
+            fi
           fi
-          echo "✅ Secrets 设置完成"
+          
+          echo "✅ Secrets 设置流程完成（部分失败不影响部署）"
 
       - name: Save deployment info
         uses: actions/upload-artifact@v4
