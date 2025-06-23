@@ -683,7 +683,7 @@ admin.get("/", async (c) => {
 
                 const result = await response.json();
                 if (response.ok) {
-                    showAlert(\`域名 \${domain} 优选完成，新IP: \${result.ip}\`);
+                    showAlert(\`域名 \${domain} 优选完成，最佳IP: \${result.bestIp}，响应时间: \${result.responseTime}ms\`);
                     loadDomains();
                 } else {
                     showAlert(result.error || '优选失败', 'error');

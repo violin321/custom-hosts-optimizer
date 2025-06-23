@@ -61,6 +61,44 @@ async function copyToClipboard(text, btn) {
 let cachedHostsContent = null
 let lastHostsUpdate = null
 const HOSTS_CACHE_DURATION = 60 * 60 * 1000 // 1小时缓存
+let autoRefreshTimer = null
+
+// 从 localStorage 恢复缓存
+function restoreCache() {
+  try {
+    const cached = localStorage.getItem('hosts_cache')
+    const timestamp = localStorage.getItem('hosts_cache_timestamp')
+    
+    if (cached && timestamp) {
+      const now = Date.now()
+      const cacheTime = parseInt(timestamp)
+      
+      // 如果缓存未过期，恢复缓存
+      if (now - cacheTime < HOSTS_CACHE_DURATION) {
+        cachedHostsContent = cached
+        lastHostsUpdate = cacheTime
+        return true
+      } else {
+        // 清除过期缓存
+        localStorage.removeItem('hosts_cache')
+        localStorage.removeItem('hosts_cache_timestamp')
+      }
+    }
+  } catch (error) {
+    console.warn('恢复缓存失败:', error)
+  }
+  return false
+}
+
+// 保存缓存到 localStorage
+function saveCache(content, timestamp) {
+  try {
+    localStorage.setItem('hosts_cache', content)
+    localStorage.setItem('hosts_cache_timestamp', timestamp.toString())
+  } catch (error) {
+    console.warn('保存缓存失败:', error)
+  }
+}
 
 // 更新状态显示
 function updateHostsStatus(message, type = 'info') {
@@ -71,6 +109,36 @@ function updateHostsStatus(message, type = 'info') {
   }
 }
 
+// 计算下次更新时间并显示倒计时
+function updateCountdown() {
+  if (!lastHostsUpdate) return
+  
+  const now = Date.now()
+  const timeLeft = HOSTS_CACHE_DURATION - (now - lastHostsUpdate)
+  
+  if (timeLeft > 0) {
+    const minutes = Math.ceil(timeLeft / (60 * 1000))
+    const hours = Math.floor(minutes / 60)
+    const mins = minutes % 60
+    
+    let timeText = ''
+    if (hours > 0) {
+      timeText = `${hours}小时${mins}分钟`
+    } else {
+      timeText = `${mins}分钟`
+    }
+    
+    updateHostsStatus(`使用缓存数据，${timeText}后自动更新`, 'info')
+    console.log(`Hosts缓存状态: 剩余${timeText}`)
+  } else {
+    // 缓存已过期，触发更新
+    console.log('Hosts缓存已过期，触发自动更新')
+    if (currentTab === 'hosts') {
+      loadHosts(true)
+    }
+  }
+}
+
 // 加载 hosts 内容
 async function loadHosts(forceRefresh = false) {
   const hostsElement = document.getElementById("hosts")
@@ -78,16 +146,19 @@ async function loadHosts(forceRefresh = false) {
 
   const now = Date.now()
   
+  console.log(`loadHosts调用: forceRefresh=${forceRefresh}, 缓存时间=${lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : '无'}`)
+  
   // 如果有缓存且未过期且不是强制刷新，使用缓存
   if (!forceRefresh && cachedHostsContent && lastHostsUpdate && 
       (now - lastHostsUpdate < HOSTS_CACHE_DURATION)) {
+    console.log('使用缓存数据显示hosts内容')
     hostsElement.textContent = cachedHostsContent
-    const timeLeft = Math.ceil((HOSTS_CACHE_DURATION - (now - lastHostsUpdate)) / (60 * 1000))
-    updateHostsStatus(`使用缓存数据，${timeLeft}分钟后自动更新`, 'info')
+    updateCountdown()
     return
   }
 
   try {
+    console.log('开始获取hosts数据...')
     // 显示更新状态
     updateHostsStatus('正在更新 hosts 数据...', 'updating')
     
@@ -110,6 +181,7 @@ async function loadHosts(forceRefresh = false) {
     if (!response.ok) throw new Error("Failed to load hosts")
     
     const hostsContent = await response.text()
+    console.log(`成功获取hosts数据，长度: ${hostsContent.length}`)
     
     // 更新缓存和显示内容
     const isContentChanged = cachedHostsContent !== hostsContent
@@ -117,29 +189,78 @@ async function loadHosts(forceRefresh = false) {
     lastHostsUpdate = now
     hostsElement.textContent = hostsContent
     
+    // 保存到 localStorage
+    saveCache(hostsContent, now)
+    console.log(`hosts内容${isContentChanged ? '已' : '未'}更新，已保存到缓存`)
+    
     // 更新状态
     if (isContentChanged) {
       updateHostsStatus('hosts 内容已更新', 'success')
       setTimeout(() => {
-        updateHostsStatus('使用缓存数据，每小时自动更新', 'info')
+        updateCountdown()
       }, 3000)
     } else {
-      updateHostsStatus('使用缓存数据，每小时自动更新', 'info')
+      updateCountdown()
     }
     
     // 如果是后台更新且内容有变化，显示提示
     if (!forceRefresh && isContentChanged) {
       showMessage('hosts 内容已更新', 'success')
     }
+    
+    // 重新设置自动刷新定时器
+    setupAutoRefresh()
+    
   } catch (error) {
+    console.error("获取hosts数据失败:", error)
     // 如果有缓存，保持显示缓存内容
     if (!cachedHostsContent) {
       hostsElement.textContent = "加载 hosts 内容失败，请稍后重试"
     }
     updateHostsStatus('更新失败，使用缓存数据', 'error')
-    console.error("Error loading hosts:", error)
     showMessage('加载失败，请稍后重试', 'error')
+    
+    // 即使失败也要设置重试定时器
+    setupAutoRefresh()
   }
+}
+
+// 设置自动刷新定时器
+function setupAutoRefresh() {
+  // 清除现有定时器
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer)
+  }
+  
+  if (!lastHostsUpdate) return
+  
+  const now = Date.now()
+  const timeLeft = HOSTS_CACHE_DURATION - (now - lastHostsUpdate)
+  
+  if (timeLeft > 0) {
+    // 设置在缓存过期时自动刷新
+    autoRefreshTimer = setTimeout(() => {
+      if (currentTab === 'hosts') {
+        console.log('自动刷新 hosts 内容')
+        loadHosts(true)
+      }
+    }, timeLeft)
+  } else {
+    // 缓存已过期，立即刷新
+    if (currentTab === 'hosts') {
+      loadHosts(true)
+    }
+  }
+}
+
+// 设置倒计时更新定时器
+function setupCountdownTimer() {
+  // 每分钟更新一次倒计时显示
+  setInterval(() => {
+    if (currentTab === 'hosts' && lastHostsUpdate) {
+      updateCountdown()
+    }
+  }, 60 * 1000) // 每分钟更新
 }
 
 // 选项卡切换
@@ -160,233 +281,52 @@ function switchTab(tabName) {
   
   // 根据选项卡加载相应内容
   if (tabName === 'hosts') {
-    loadHosts() // 使用缓存逻辑，不强制刷新
-  } else if (tabName === 'custom') {
-    loadCustomDomains()
-  }
-}
-
-// 加载自定义域名列表
-async function loadCustomDomains() {
-  const container = document.getElementById('customDomainsList')
-  if (!container) return
-  
-  try {
-    container.innerHTML = '<div class="loading">正在加载自定义域名...</div>'
+    // 只有在没有缓存或缓存过期时才加载
+    const now = Date.now()
+    const needRefresh = !cachedHostsContent || !lastHostsUpdate || 
+                       (now - lastHostsUpdate >= HOSTS_CACHE_DURATION)
     
-    const response = await fetch(`${baseUrl}/api/custom-domains`)
-    
-    if (!response.ok) {
-      throw new Error('加载失败')
-    }
-    
-    const domains = await response.json()
-    const domainList = Object.values(domains)
-    
-    if (domainList.length === 0) {
-      container.innerHTML = '<p>暂无自定义域名</p>'
-      return
-    }
-    
-    container.innerHTML = domainList.map(domain => `
-      <div class="domain-item">
-        <div class="domain-info">
-          <h4>${escapeHtml(domain.domain)}</h4>
-          <p>${domain.description || '无描述'}</p>
-          <p>添加时间: ${new Date(domain.addedAt).toLocaleString()}</p>
-          ${domain.lastUpdated ? `<p>最后更新: ${new Date(domain.lastUpdated).toLocaleString()}</p>` : ''}
-        </div>
-        <div class="domain-actions">
-          <button class="btn btn-small btn-primary" onclick="optimizeDomain('${domain.domain}')">优选</button>
-          <button class="btn btn-small btn-danger" onclick="removeDomain('${domain.domain}')">删除</button>
-        </div>
-      </div>
-    `).join('')
-  } catch (error) {
-    container.innerHTML = `<p style="color: var(--error-color)">加载失败: ${error.message}</p>`
-    console.error('Error loading custom domains:', error)
-  }
-}
-
-// 添加自定义域名
-async function addCustomDomain() {
-  const domainInput = document.getElementById('domainInput')
-  const descriptionInput = document.getElementById('descriptionInput')
-  
-  const domain = domainInput.value.trim()
-  const description = descriptionInput.value.trim()
-  
-  if (!domain) {
-    showMessage('请输入域名', 'error')
-    return
-  }
-  
-  // 简单的域名格式验证
-  if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
-    showMessage('域名格式不正确', 'error')
-    return
-  }
-  
-  try {
-    const response = await fetch(`${baseUrl}/api/custom-domains`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ domain, description })
-    })
-    
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || '添加失败')
-    }
-    
-    showMessage(`域名 ${domain} 添加成功`, 'success')
-    
-    // 清空表单
-    domainInput.value = ''
-    descriptionInput.value = ''
-    
-    // 重新加载域名列表
-    loadCustomDomains()
-  } catch (error) {
-    showMessage(`添加失败: ${error.message}`, 'error')
-    console.error('Error adding custom domain:', error)
-  }
-}
-
-// 批量添加自定义域名
-async function addCustomDomainsBatch() {
-  const batchInput = document.getElementById('batchDomainsInput')
-  const batchContent = batchInput.value.trim()
-  
-  if (!batchContent) {
-    showMessage('请输入域名列表', 'error')
-    return
-  }
-  
-  // 解析域名列表（支持多种格式）
-  const lines = batchContent.split('\n').filter(line => line.trim())
-  const domains = []
-  
-  for (const line of lines) {
-    const trimmedLine = line.trim()
-    if (!trimmedLine) continue
-    
-    // 支持多种格式：
-    // 1. domain.com
-    // 2. domain.com,description
-    // 3. domain.com description
-    let domain, description = ''
-    
-    if (trimmedLine.includes(',')) {
-      const parts = trimmedLine.split(',')
-      domain = parts[0].trim()
-      description = parts.slice(1).join(',').trim()
-    } else if (trimmedLine.includes(' ')) {
-      const parts = trimmedLine.split(/\s+/)
-      domain = parts[0].trim()
-      description = parts.slice(1).join(' ').trim()
+    if (needRefresh) {
+      loadHosts(false) // 不强制刷新，让函数内部判断
     } else {
-      domain = trimmedLine
+      // 使用缓存显示
+      const hostsElement = document.getElementById("hosts")
+      if (hostsElement && cachedHostsContent) {
+        hostsElement.textContent = cachedHostsContent
+        updateCountdown()
+      }
     }
-    
-    if (domain) {
-      domains.push({ domain, description })
-    }
-  }
-  
-  if (domains.length === 0) {
-    showMessage('未找到有效的域名', 'error')
-    return
-  }
-  
-  try {
-    showMessage(`正在批量添加 ${domains.length} 个域名...`, 'info')
-    
-    const response = await fetch(`${baseUrl}/api/custom-domains/batch`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ domains })
-    })
-    
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || '批量添加失败')
-    }
-    
-    const result = await response.json()
-    
-    let message = `批量添加完成：成功 ${result.added} 个`
-    if (result.failed > 0) {
-      message += `，失败 ${result.failed} 个`
-    }
-    
-    showMessage(message, result.failed > 0 ? 'warning' : 'success')
-    
-    // 显示详细错误信息
-    if (result.errors.length > 0) {
-      console.log('批量添加错误详情:', result.errors)
-      const errorMessages = result.errors.map(err => `${err.domain}: ${err.error}`).join('\n')
-      showMessage(`错误详情：\n${errorMessages}`, 'error')
-    }
-    
-    // 清空表单
-    batchInput.value = ''
-    
-    // 重新加载域名列表
-    loadCustomDomains()
-  } catch (error) {
-    showMessage(`批量添加失败: ${error.message}`, 'error')
-    console.error('Error batch adding domains:', error)
   }
 }
 
-// 删除自定义域名
+// 加载自定义域名列表（已移至管理后台，此函数保留以防兼容性问题）
+async function loadCustomDomains() {
+  console.log('自定义域名管理功能已移至管理后台，请访问 /admin-x7k9m3q2 进行管理')
+  return
+}
+
+// 添加自定义域名（已移至管理后台）
+async function addCustomDomain() {
+  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  return
+}
+
+// 批量添加自定义域名（已移至管理后台）
+async function addCustomDomainsBatch() {
+  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  return
+}
+
+// 删除自定义域名（已移至管理后台）
 async function removeDomain(domain) {
-  if (!confirm(`确定要删除域名 ${domain} 吗？`)) {
-    return
-  }
-  
-  try {
-    const response = await fetch(`${baseUrl}/api/custom-domains/${encodeURIComponent(domain)}`, {
-      method: 'DELETE'
-    })
-    
-    if (!response.ok) {
-      throw new Error('删除失败')
-    }
-    
-    showMessage(`域名 ${domain} 删除成功`, 'success')
-    loadCustomDomains()
-  } catch (error) {
-    showMessage(`删除失败: ${error.message}`, 'error')
-    console.error('Error removing domain:', error)
-  }
+  showMessage('自定义域名管理功能已移至管理后台，请访问管理后台进行操作', 'info')
+  return
 }
 
-// 优选域名
+// 优选域名（保留此函数以防HTML中有调用）
 async function optimizeDomain(domain) {
-  try {
-    showMessage(`正在为 ${domain} 进行 IP 优选...`, 'info')
-    
-    const response = await fetch(`${baseUrl}/api/optimize/${encodeURIComponent(domain)}`, {
-      method: 'POST'
-    })
-    
-    if (!response.ok) {
-      throw new Error('优选失败')
-    }
-    
-    const result = await response.json()
-    showMessage(`${domain} 优选完成，最佳 IP: ${result.bestIp}，响应时间: ${result.responseTime}ms`, 'success')
-    loadCustomDomains()
-  } catch (error) {
-    showMessage(`优选失败: ${error.message}`, 'error')
-    console.error('Error optimizing domain:', error)
-  }
+  showMessage('域名优选功能已移至管理后台，请访问管理后台进行操作', 'info')
+  return
 }
 
 // 设置事件监听器
@@ -425,30 +365,6 @@ function setupEventListeners() {
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => loadHosts(true)) // 强制刷新
   }
-  
-  // IP优选和自定义域名功能已默认启用，无需切换按钮
-  
-  // 添加域名按钮
-  const addDomainBtn = document.getElementById('addDomain')
-  if (addDomainBtn) {
-    addDomainBtn.addEventListener('click', addCustomDomain)
-  }
-  
-  // 批量添加域名按钮
-  const addBatchBtn = document.getElementById('addBatchDomains')
-  if (addBatchBtn) {
-    addBatchBtn.addEventListener('click', addCustomDomainsBatch)
-  }
-  
-  // 表单回车提交
-  const domainInput = document.getElementById('domainInput')
-  if (domainInput) {
-    domainInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        addCustomDomain()
-      }
-    })
-  }
 }
 
 // 初始化
@@ -461,18 +377,50 @@ function init() {
     switchHostsUrlElement.textContent = `${baseUrl}/hosts`
   }
   
+  // 恢复缓存
+  const hasCachedData = restoreCache()
+  
   // 加载初始内容
   if (currentTab === 'hosts') {
-    loadHosts() // 初始加载使用缓存逻辑
+    if (hasCachedData) {
+      // 如果有缓存，先显示缓存内容
+      const hostsElement = document.getElementById("hosts")
+      if (hostsElement && cachedHostsContent) {
+        hostsElement.textContent = cachedHostsContent
+        updateCountdown()
+        
+        // 在后台检查是否需要更新
+        const now = Date.now()
+        if (now - lastHostsUpdate >= HOSTS_CACHE_DURATION) {
+          loadHosts(true) // 缓存过期，后台更新
+        } else {
+          setupAutoRefresh() // 设置自动刷新定时器
+        }
+      }
+    } else {
+      // 没有缓存，首次加载
+      loadHosts(false)
+    }
   }
   
-  // 设置自动刷新定时器（每小时刷新一次）
-  setInterval(() => {
-    if (currentTab === 'hosts') {
-      loadHosts(true) // 定时强制刷新
-    }
-  }, 60 * 60 * 1000) // 1小时
+  // 设置倒计时更新定时器
+  setupCountdownTimer()
 }
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', init)
+
+// 页面可见性变化时的处理
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && currentTab === 'hosts') {
+    // 页面重新可见时，检查缓存是否过期
+    const now = Date.now()
+    if (lastHostsUpdate && (now - lastHostsUpdate >= HOSTS_CACHE_DURATION)) {
+      console.log('页面重新可见，缓存已过期，刷新数据')
+      loadHosts(true)
+    } else if (lastHostsUpdate) {
+      // 更新倒计时显示
+      updateCountdown()
+    }
+  }
+})
