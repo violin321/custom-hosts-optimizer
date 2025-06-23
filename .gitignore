@@ -18,8 +18,15 @@ node_modules/
 # env
 .env
 .env.production
+
+# Cloudflare Workers 相关敏感文件
+wrangler.toml
 .dev.vars
 
+# 备份和临时文件
+*.backup
+*.tmp
+.DS_Store
 
 # logs
 logs/

@@ -2,6 +2,14 @@
   <img src="public/logo.svg" width="140" height="140" alt="优选自定义host logo">
   <h1>优选自定义host</h1>
   <p>自定义域名访问加速，智能 IP 优选解决访问慢的问题。使用 Cloudflare Workers 和公共 DNS API 来获取最优 IP 地址。</p>
+  
+  <p>
+    <a href="#快速开始">快速开始</a> •
+    <a href="#特性">特性</a> •
+    <a href="#使用方法">使用方法</a> •
+    <a href="#API-文档">API 文档</a> •
+    <a href="#部署指南">部署指南</a>
+  </p>
 </div>
 
 ## 🚀 新功能
@@ -10,8 +18,8 @@
 - ⚡ **智能 IP 优选** - 自动测试响应时间，选择最快 IP
 - 🎯 **现代化界面** - 全新的选项卡式管理界面
 - 🔧 **完整 API** - RESTful API 支持所有功能
-- 🤖 **GitHub Actions** - 一键自动化部署
 - 🛠️ **管理后台** - 受密码保护的管理员界面
+- 🔒 **权限控制** - 灵活的 API Key 权限管理
 
 ## 特性
 
@@ -23,42 +31,59 @@
 - 📡 提供 REST API 接口
 - 🎯 自定义域名 IP 优选
 - 🧠 智能响应时间检测
+- 🔐 安全的权限控制系统
 
 ## 快速开始
 
-### 方法 1：使用已部署的服务
+### 使用公共服务
 
-直接使用我们的公共服务：`https://github-hosts.tinsfox.com`
+如果您只是想快速使用，可以直接使用已部署的公共服务。
 
-### 方法 2：GitHub Actions 一键部署
+### 自行部署
 
-1. Fork 这个仓库
-2. 在 GitHub Secrets 中设置：
-   - `CLOUDFLARE_API_TOKEN` - 你的 Cloudflare API Token
-3. 触发 GitHub Actions 自动部署
+> **注意**: 要使用完整功能，建议自行部署到您的 Cloudflare Workers。
 
-> **功能说明**：现在无需 API Key，可以直接使用所有自定义域名功能。详细使用方法请参考：[自定义域名管理指南](CUSTOM_DOMAINS_GUIDE.md)
+#### 前置要求
 
-详细说明：[GitHub Actions 部署指南](GITHUB_ACTIONS_DEPLOY.md)
+- Cloudflare 账户（免费账户即可）
+- Node.js 20+ 
+- Git
 
-### 方法 3：手动部署
+#### 部署步骤
 
+1. **克隆仓库**
 ```bash
-# 克隆仓库
 git clone https://github.com/Yan-nian/custom-host.git
 cd custom-host
-
-# 安装依赖
-pnpm install
-
-# 登录 Cloudflare
-pnpm exec wrangler auth login
-
-# 一键部署
-./deploy.sh
 ```
 
-详细说明：[手动部署指南](DEPLOYMENT.md)
+2. **安装依赖**
+```bash
+npm install
+# 或使用 pnpm
+pnpm install
+```
+
+3. **配置 Cloudflare**
+```bash
+# 登录 Cloudflare
+npx wrangler login
+
+# 创建 KV 命名空间
+npx wrangler kv:namespace create "custom_hosts"
+npx wrangler kv:namespace create "custom_hosts" --preview
+```
+
+4. **更新配置**
+   - 将 KV 命名空间 ID 填入 `wrangler.toml`
+   - 可选：设置管理后台密码
+
+5. **部署应用**
+```bash
+npm run deploy
+```
+
+> 详细部署说明请参考：[手动部署指南](MANUAL_DEPLOY.md)
 
 ## 使用方法
 
@@ -67,7 +92,7 @@ pnpm exec wrangler auth login
 访问部署的 Worker URL，使用现代化的 Web 界面：
 
 - **Hosts 文件** - 查看和下载 hosts 文件
-- **自定义域名** - 管理你的自定义域名
+- **自定义域名管理** - 添加和管理你的自定义域名
 - **API 文档** - 查看完整 API 文档
 - **使用帮助** - 详细使用说明
 
@@ -143,6 +168,40 @@ curl -X POST "https://your-worker-url.workers.dev/api/optimize/example.com?key=Y
 # 包含 IP 优选和自定义域名
 curl "https://your-worker-url.workers.dev/hosts?optimize=true&custom=true"
 ```
+
+## 📋 配置
+
+### 环境变量
+
+在部署时，你可以设置以下环境变量：
+
+| 变量名 | 描述 | 默认值 | 必需 |
+|--------|------|--------|------|
+| `ADMIN_USERNAME` | 管理后台用户名 | `admin` | 否 |
+| `ADMIN_PASSWORD` | 管理后台密码 | 无 | 推荐 |
+| `API_KEY` | API 访问密钥 | 无 | 否 |
+
+### 自定义域名列表
+
+编辑 `src/constants.ts` 文件来自定义需要优选的域名：
+
+```typescript
+export const GITHUB_URLS = [
+  "github.com",
+  "api.github.com",
+  "raw.githubusercontent.com",
+  // 添加你的域名
+  "your-domain.com"
+]
+```
+
+### DNS 提供商
+
+支持多个 DNS 提供商，默认包括：
+- Cloudflare DNS
+- Google DNS
+
+可在 `src/constants.ts` 中自定义更多提供商。
 
 ## 🔧 API 文档
 
@@ -285,30 +344,46 @@ id = "your-kv-namespace-id"
 - Windows：需要以管理员身份运行
 - MacOS/Linux：需要 sudo 权限
 
-### 定时任务未生效
-- Windows：检查任务计划程序中的 "GitHub Hosts Updater"
-- MacOS/Linux：使用 `crontab -l` 检查
+### 部署问题
+- 确保 Cloudflare API Token 有正确权限
+- 检查 KV 命名空间 ID 是否正确
+- 查看 Worker 日志排查错误
+
+### 访问问题
+- 检查域名解析是否正确
+- 确认防火墙设置
+- 查看浏览器控制台错误信息
 
 ### 更新失败
-- 检查日志：`~/.github-hosts/logs/update.log`
-- 确保网络连接和文件权限正常
+- 检查网络连接
+- 确认 API Key 权限
+- 查看 Worker 执行日志
 
-## 部署指南
+## 📄 许可证
+
+本项目采用 [MIT 许可证](LICENSE)。
+
+## 🤝 贡献
+
+欢迎提交 Issues 和 Pull Requests！
 
 1. Fork 本项目
-2. 创建 Cloudflare Workers 账号
-3. 安装并部署：
-```bash
-pnpm install
-pnpm run dev    # 本地开发
-pnpm run deploy # 部署到 Cloudflare
-```
+2. 创建功能分支：`git checkout -b feature/new-feature`
+3. 提交更改：`git commit -am 'Add new feature'`
+4. 推送分支：`git push origin feature/new-feature`
+5. 提交 Pull Request
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-host)
+## 🙏 鸣谢
 
-## 鸣谢
+- [GitHub520](https://github.com/521xueweihan/GitHub520) - 灵感来源
+- [TinsFox/github-hosts](https://github.com/TinsFox/github-hosts) - 技术参考
+- [Cloudflare Workers](https://workers.cloudflare.com/) - 提供强大的边缘计算平台
 
-- [GitHub520](https://github.com/521xueweihan/GitHub520)
+## ⭐ Star History
+
+如果这个项目对你有帮助，请给它一个星标！
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Yan-nian/custom-host&type=Date)](https://star-history.com/#Yan-nian/custom-host&Date)
 - [![Powered by DartNode](https://dartnode.com/branding/DN-Open-Source-sm.png)](https://dartnode.com "Powered by DartNode - Free VPS for Open Source")
 
 ## 许可证
