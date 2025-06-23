@@ -879,17 +879,6 @@ app.post("/api/reset", async (c) => {
   })
 })
 
-app.get("/:domain", async (c) => {
-  const domain = c.req.param("domain")
-  const data = await getDomainData(c.env, domain)
-
-  if (!data) {
-    return c.json({ error: "Domain not found" }, 404)
-  }
-
-  return c.json(data)
-})
-
 // 批量清空自定义域名 API
 app.delete("/api/custom-domains", async (c) => {
   try {
@@ -995,6 +984,18 @@ app.get("/debug", async (c) => {
       error: "Debug failed: " + (error instanceof Error ? error.message : String(error)) 
     }, 500)
   }
+})
+
+// 通配符路由必须放在最后，避免拦截其他具体路由
+app.get("/:domain", async (c) => {
+  const domain = c.req.param("domain")
+  const data = await getDomainData(c.env, domain)
+
+  if (!data) {
+    return c.json({ error: "Domain not found" }, 404)
+  }
+
+  return c.json(data)
 })
 
 export default {
