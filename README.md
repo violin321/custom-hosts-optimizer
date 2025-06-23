@@ -37,12 +37,16 @@
 
 ### 🔄 自动部署（GitHub Actions）
 
+⚠️ **重要提示**：自动部署需要正确配置 GitHub Secrets，否则会显示认证错误！
+
 Fork 仓库后享受自动化部署：
 
 #### 步骤 1：Fork 仓库
 点击仓库右上角的 "Fork" 按钮，将仓库 Fork 到您的 GitHub 账户。
 
-#### 步骤 2：获取 Cloudflare API Token
+#### 步骤 2：获取 Cloudflare API 凭据（两种方式）
+
+**方式一：API Token（推荐）**
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. 点击右上角头像 → "My Profile" 
 3. 切换到 "API Tokens" 标签页
@@ -53,6 +57,15 @@ Fork 仓库后享受自动化部署：
    - **区域资源**：包含所有区域（或特定区域）
 6. 点击 "Continue to summary" 然后 "Create Token"
 7. **复制生成的 Token**（只显示一次）
+
+**方式二：Global API Key（简单）**
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. 点击右上角头像 → "My Profile" 
+3. 切换到 "API Tokens" 标签页
+4. 在 "Global API Key" 部分点击 "View"
+5. 输入密码确认
+6. **复制显示的 Global API Key**
+7. **同时记录您的 Cloudflare 账户邮箱**
 
 #### 步骤 3：创建 KV 命名空间
 1. 在 Cloudflare Dashboard 进入 "Workers & Pages"
@@ -66,17 +79,23 @@ Fork 仓库后享受自动化部署：
 1. 进入您 Fork 的仓库
 2. 点击 "Settings" → "Secrets and variables" → "Actions"
 3. 点击 "New repository secret"
-4. **必须添加以下两个 Secrets**：
-   
-   **第一个 Secret：**
-   - **Name**: `CLOUDFLARE_API_TOKEN`
-   - **Value**: 步骤 2 中复制的 API Token
-   
-   **第二个 Secret：**
-   - **Name**: `KV_NAMESPACE_ID`
-   - **Value**: 步骤 3 中复制的命名空间 ID
+4. **根据您选择的 API 方式添加 Secrets**：
 
-⚠️ **注意**：两个 Secrets 都必须设置，否则自动部署会失败！
+**如果使用 API Token（步骤 2 方式一）：**
+- **Name**: `CLOUDFLARE_API_TOKEN`
+- **Value**: 步骤 2 中复制的 API Token
+
+**如果使用 Global API Key（步骤 2 方式二）：**
+- **第一个 Secret**：
+  - **Name**: `CLOUDFLARE_EMAIL`
+  - **Value**: 您的 Cloudflare 账户邮箱
+- **第二个 Secret**：
+  - **Name**: `CLOUDFLARE_API_KEY`
+  - **Value**: 步骤 2 中复制的 Global API Key
+
+**必须添加的 Secret（两种方式都需要）：**
+- **Name**: `KV_NAMESPACE_ID`
+- **Value**: 步骤 3 中复制的命名空间 ID
 6. **复制创建的命名空间 ID**
 
 #### 步骤 5：配置 KV Namespace（安全方式）
@@ -119,10 +138,25 @@ preview_id = "your-actual-kv-namespace-id"
 ```
 
 #### 步骤 6：验证配置
-在触发部署前，请确认：
-- ✅ GitHub Secrets 中已设置 `CLOUDFLARE_API_TOKEN`
-- ✅ GitHub Secrets 中已设置 `KV_NAMESPACE_ID`
-- ✅ 您选择了合适的 KV 配置方法（推荐方法一）
+在触发部署前，请确认您的配置：
+
+**GitHub Secrets 检查清单：**
+- ✅ 进入仓库 "Settings" → "Secrets and variables" → "Actions"
+- ✅ 确认存在 `CLOUDFLARE_EMAIL` Secret（您的 Cloudflare 账户邮箱）
+- ✅ 确认存在 `CLOUDFLARE_API_KEY` Secret（Global API Key）
+- ✅ 确认存在 `KV_NAMESPACE_ID` Secret（KV 命名空间 ID）
+- ✅ 确认三个 Secret 的值都已正确填入
+
+**Global API Key 使用提示：**
+- ✅ Global API Key 具有账户的完全权限，请妥善保管
+- ✅ 邮箱必须是您 Cloudflare 账户的注册邮箱
+- ✅ Token 权限包含 "Zone:Zone Settings:Read"
+- ✅ Token 账户资源包含您的账户
+
+**常见错误检查：**
+- ❌ 避免在 Secret 值前后留空格
+- ❌ 避免复制时包含额外字符
+- ❌ 确保 API Token 没有过期
 
 #### 步骤 7：触发部署
 推送任何更改到 main 分支即可自动部署：
@@ -252,9 +286,21 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 
 ### 常见部署问题
 
-#### 1. GitHub Actions 失败："Unable to authenticate request"
-**原因**：未配置 `CLOUDFLARE_API_TOKEN` Secret  
-**解决**：按照步骤 2-4 配置 Cloudflare API Token
+#### 1. GitHub Actions 失败："Unable to authenticate request [code: 10001]"
+**原因**：未正确配置 Cloudflare 认证信息  
+**解决方案**：
+1. **检查 GitHub Secrets 配置**：
+   - 确保设置了 `CLOUDFLARE_EMAIL`（您的 Cloudflare 账户邮箱）
+   - 确保设置了 `CLOUDFLARE_API_KEY`（Global API Key）
+2. **验证凭据**：
+   - 邮箱必须是 Cloudflare 账户的注册邮箱
+   - Global API Key 请重新复制，确保没有多余空格
+3. **测试凭据有效性**：
+   ```bash
+   curl -X GET "https://api.cloudflare.com/client/v4/user" \
+        -H "X-Auth-Email: your-email@example.com" \
+        -H "X-Auth-Key: your-global-api-key"
+   ```
 
 #### 2. GitHub Actions 失败："KV namespace 'YOUR_KV_NAMESPACE_ID' is not valid"
 **原因**：未配置 `KV_NAMESPACE_ID` Secret  

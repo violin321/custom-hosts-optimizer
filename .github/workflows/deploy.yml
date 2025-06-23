@@ -21,6 +21,7 @@ jobs:
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          email: ${{ secrets.CLOUDFLARE_EMAIL }}
+          apiKey: ${{ secrets.CLOUDFLARE_API_KEY }}
           command: deploy
           packageManager: npm
