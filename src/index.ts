@@ -3,16 +3,14 @@ import { basicAuth } from "hono/basic-auth"
 import {
   formatHostsFile,
   getDomainData,
-  getHostsData,
+  getCompleteHostsData,
   resetHostsData,
   getCustomDomains,
   addCustomDomain,
   removeCustomDomain,
-  optimizeCustomDomain,
   fetchCustomDomainsData,
   fetchLatestHostsData,
-  fetchIPFromIPAddress,
-  optimizeDomainIP,
+  fetchIPFromMultipleDNS,
 } from "./services/hosts"
 import { handleSchedule } from "./scheduled"
 import { Bindings } from "./types"
@@ -650,20 +648,14 @@ admin.get("/", async (c) => {
 admin.get("/debug", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const hostsData = await fetchCustomDomainsData(c.env, true) // 使用优化模式
-    const hostsDataNoOpt = await fetchCustomDomainsData(c.env, false) // 不使用优化模式
-    
-    // 统计实际解析成功的域名数量（排除"未解析"的）
-    const resolvedWithOpt = hostsData.filter(([ip]) => ip !== '未解析')
-    const resolvedWithoutOpt = hostsDataNoOpt.filter(([ip]) => ip !== '未解析')
+    const hostsData = await fetchCustomDomainsData(c.env)
     
     return c.json({
-      stored_domains: Object.keys(customDomains),
-      stored_count: Object.keys(customDomains).length,
-      resolved_with_optimization: hostsData.map(([ip, domain]) => ({ domain, ip })),
-      resolved_without_optimization: hostsDataNoOpt.map(([ip, domain]) => ({ domain, ip })),
-      resolved_count_opt: resolvedWithOpt.length,
-      resolved_count_no_opt: resolvedWithoutOpt.length
+      stored_domains: customDomains.map(cd => cd.domain),
+      stored_count: customDomains.length,
+      resolved_domains: hostsData.map(([ip, domain]) => ({ domain, ip })),
+      resolved_count: hostsData.length,
+      custom_domains: customDomains
     })
   } catch (error) {
     return c.json({ 
@@ -685,20 +677,14 @@ app.get("/", async (c) => {
 })
 
 app.get("/hosts.json", async (c) => {
-  const useOptimization = c.req.query("optimize") === "true"
   const includeCustom = c.req.query("custom") !== "false"
 
-  const githubData = await getHostsData(c.env, useOptimization)
-  let customData: any[] = []
-
-  if (includeCustom) {
-    customData = await fetchCustomDomainsData(c.env, useOptimization)
-  }
+  const allData = await getCompleteHostsData(c.env)
 
   return c.json({
-    github: githubData,
-    custom: customData,
-    total: githubData.length + customData.length,
+    entries: allData,
+    total: allData.length,
+    includeCustom,
   })
 })
 
@@ -706,20 +692,10 @@ app.get("/hosts", async (c) => {
   const useOptimization = c.req.query("optimize") === "true"
   const includeCustom = c.req.query("custom") !== "false"
 
-  console.log(`/hosts请求 - 优化模式: ${useOptimization}, 包含自定义域名: ${includeCustom}`)
+  console.log(`/hosts请求 - 包含自定义域名: ${includeCustom}`)
 
-  const githubData = await getHostsData(c.env, useOptimization)
-  console.log(`GitHub数据获取完成: ${githubData.length} 条`)
-  
-  let customData: any[] = []
-
-  if (includeCustom) {
-    customData = await fetchCustomDomainsData(c.env, useOptimization)
-    console.log(`自定义域名数据获取完成: ${customData.length} 条`)
-  }
-
-  const allData = [...githubData, ...customData]
-  console.log(`合并后总数据: ${allData.length} 条 (GitHub: ${githubData.length}, 自定义: ${customData.length})`)
+  const allData = await getCompleteHostsData(c.env)
+  console.log(`合并后总数据: ${allData.length} 条`)
   
   const hostsContent = formatHostsFile(allData)
   console.log(`生成的hosts文件长度: ${hostsContent.length} 字符`)
@@ -748,12 +724,12 @@ app.post("/api/custom-domains", async (c) => {
       return c.json({ error: "Invalid domain format" }, 400)
     }
 
-    const success = await addCustomDomain(c.env, domain, description)
+    const result = await addCustomDomain(c.env, domain)
 
-    if (success) {
-      return c.json({ message: "Domain added successfully", domain })
+    if (result) {
+      return c.json({ message: "Domain added successfully", domain, result })
     } else {
-      return c.json({ error: "Failed to add domain" }, 500)
+      return c.json({ error: "Failed to add domain or resolve IP" }, 500)
     }
   } catch (error) {
     return c.json({ error: "Invalid request body" }, 400)
@@ -824,25 +800,34 @@ app.delete("/api/custom-domains/:domain", async (c) => {
 
 app.post("/api/optimize/:domain", async (c) => {
   const domain = c.req.param("domain")
-  const result = await optimizeCustomDomain(c.env, domain)
-
-  if (result) {
-    return c.json(result)
-  } else {
-    return c.json({ error: "Failed to optimize domain" }, 500)
+  
+  try {
+    // 重新解析域名获取新的 IP
+    const newIp = await fetchIPFromMultipleDNS(domain)
+    if (!newIp) {
+      return c.json({ error: "Failed to resolve domain" }, 404)
+    }
+    
+    // 更新自定义域名
+    const result = await addCustomDomain(c.env, domain, newIp)
+    if (result) {
+      return c.json(result)
+    } else {
+      return c.json({ error: "Failed to update domain" }, 500)
+    }
+  } catch (error) {
+    console.error(`Error optimizing domain ${domain}:`, error)
+    return c.json({ error: "Internal server error" }, 500)
   }
 })
 
 app.post("/api/reset", async (c) => {
-  const useOptimization = c.req.query("optimize") === "true"
-
-  const newEntries = await resetHostsData(c.env, useOptimization)
+  const newEntries = await resetHostsData(c.env)
 
   return c.json({
     message: "Reset completed",
     entriesCount: newEntries.length,
     entries: newEntries,
-    optimization: useOptimization ? "enabled" : "disabled",
   })
 })
 
@@ -899,17 +884,13 @@ app.get("/test-custom-domains", async (c) => {
     for (const domain of domains) {
       console.log(`测试域名: ${domain}`)
       
-      const standardIp = await fetchIPFromIPAddress(domain)
-      const optimizedResult = await optimizeDomainIP(domain)
+      const standardIp = await fetchIPFromMultipleDNS(domain)
       
       tests.push({
         domain,
         standardResolution: standardIp || '解析失败',
-        optimizedResolution: optimizedResult ? {
-          ip: optimizedResult.ip,
-          responseTime: optimizedResult.responseTime
-        } : '优选失败',
-        storedInfo: customDomains[domain]
+        resolvedIp: standardIp,
+        storedInfo: customDomains.find(cd => cd.domain === domain)
       })
     }
     
@@ -929,20 +910,14 @@ app.get("/test-custom-domains", async (c) => {
 app.get("/debug", async (c) => {
   try {
     const customDomains = await getCustomDomains(c.env)
-    const hostsData = await fetchCustomDomainsData(c.env, true) // 使用优化模式
-    const hostsDataNoOpt = await fetchCustomDomainsData(c.env, false) // 不使用优化模式
-    
-    // 统计实际解析成功的域名数量（排除"未解析"的）
-    const resolvedWithOpt = hostsData.filter(([ip]) => ip !== '未解析')
-    const resolvedWithoutOpt = hostsDataNoOpt.filter(([ip]) => ip !== '未解析')
+    const hostsData = await fetchCustomDomainsData(c.env)
     
     return c.json({
-      stored_domains: Object.keys(customDomains),
-      stored_count: Object.keys(customDomains).length,
-      resolved_with_optimization: hostsData.map(([ip, domain]) => ({ domain, ip })),
-      resolved_without_optimization: hostsDataNoOpt.map(([ip, domain]) => ({ domain, ip })),
-      resolved_count_opt: resolvedWithOpt.length,
-      resolved_count_no_opt: resolvedWithoutOpt.length
+      stored_domains: customDomains.map(cd => cd.domain),
+      stored_count: customDomains.length,
+      resolved_domains: hostsData.map(([ip, domain]) => ({ domain, ip })),
+      resolved_count: hostsData.length,
+      custom_domains: customDomains
     })
   } catch (error) {
     return c.json({ 

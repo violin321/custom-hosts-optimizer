@@ -1,5 +1,5 @@
 import { DNS_PROVIDERS, GITHUB_URLS, HOSTS_TEMPLATE } from "../constants"
-import { Bindings, CustomDomainList, OptimizationResult } from "../types"
+import { Bindings } from "../types"
 
 export type HostEntry = [string, string]
 
@@ -7,14 +7,21 @@ interface DomainData {
   ip: string
   lastUpdated: string
   lastChecked: string
+  responseTime?: number
+  provider?: string
+  isOptimized?: boolean
+  resolvedAt?: string
 }
 
 interface DomainDataList {
   [key: string]: DomainData
 }
+
 interface KVData {
   domain_data: DomainDataList
   lastUpdated: string
+  updateCount?: number
+  version?: string
 }
 
 interface DnsQuestion {
@@ -40,6 +47,7 @@ interface DnsResponse {
   Answer: DnsAnswer[]
 }
 
+// 重试机制
 async function retry<T>(
   fn: () => Promise<T>,
   retries: number = 3,
@@ -54,7 +62,8 @@ async function retry<T>(
   }
 }
 
-export async function fetchIPFromIPAddress(
+// 使用 DNS API 获取 IP，基于 TinsFox 项目的实现
+export async function fetchIPFromDNS(
   domain: string,
   providerName?: string
 ): Promise<string | null> {
@@ -78,15 +87,33 @@ export async function fetchIPFromIPAddress(
       return ip
     }
   } catch (error) {
-    console.error(`Error with DNS provider:`, error)
+    console.error(`Error with DNS provider ${provider.name}:`, error)
   }
 
   return null
 }
 
-export async function fetchLatestHostsData(useOptimization: boolean = false): Promise<HostEntry[]> {
+// 多DNS提供商重试机制
+export async function fetchIPFromMultipleDNS(domain: string): Promise<string | null> {
+  for (const provider of DNS_PROVIDERS) {
+    const ip = await fetchIPFromDNS(domain, provider.name)
+    if (ip) {
+      console.log(`Successfully resolved ${domain} via ${provider.name}: ${ip}`)
+      return ip
+    }
+    console.log(`Failed to resolve ${domain} via ${provider.name}`)
+  }
+  
+  console.error(`Failed to resolve ${domain} from all DNS providers`)
+  return null
+}
+
+// 批量获取最新 hosts 数据
+export async function fetchLatestHostsData(): Promise<HostEntry[]> {
   const entries: HostEntry[] = []
   const batchSize = 5
+
+  console.log(`Starting batch processing for ${GITHUB_URLS.length} domains`)
 
   for (let i = 0; i < GITHUB_URLS.length; i += batchSize) {
     console.log(
@@ -98,15 +125,9 @@ export async function fetchLatestHostsData(useOptimization: boolean = false): Pr
     const batch = GITHUB_URLS.slice(i, i + batchSize)
     const batchResults = await Promise.all(
       batch.map(async (domain) => {
-        if (useOptimization) {
-          const optimized = await optimizeDomainIP(domain)
-          console.log(`Domain: ${domain}, Optimized IP: ${optimized?.ip}, Response Time: ${optimized?.responseTime}ms`)
-          return optimized ? ([optimized.ip, domain] as HostEntry) : null
-        } else {
-          const ip = await fetchIPFromIPAddress(domain)
-          console.log(`Domain: ${domain}, IP: ${ip}`)
-          return ip ? ([ip, domain] as HostEntry) : null
-        }
+        const ip = await fetchIPFromMultipleDNS(domain)
+        console.log(`Domain: ${domain}, IP: ${ip}`)
+        return ip ? ([ip, domain] as HostEntry) : null
       })
     )
 
@@ -122,14 +143,17 @@ export async function fetchLatestHostsData(useOptimization: boolean = false): Pr
   console.log(`Total entries found: ${entries.length}`)
   return entries
 }
+
+// 存储数据
 export async function storeData(
   env: Bindings,
   data: HostEntry[]
 ): Promise<void> {
-
   await updateHostsData(env, data)
 }
-export async function getHostsData(env: Bindings, useOptimization: boolean = false): Promise<HostEntry[]> {
+
+// 获取 hosts 数据
+export async function getHostsData(env: Bindings): Promise<HostEntry[]> {
   const kvData = (await env.custom_hosts.get("domain_data", {
     type: "json",
   })) as KVData | null
@@ -140,7 +164,8 @@ export async function getHostsData(env: Bindings, useOptimization: boolean = fal
     new Date(kvData.lastUpdated).getTime() + 1000 * 60 * 60 < Date.now() ||
     Object.keys(kvData.domain_data || {}).length === 0
   ) {
-    const newEntries = await fetchLatestHostsData(useOptimization)
+    console.log("Data expired or missing, fetching new data...")
+    const newEntries = await fetchLatestHostsData()
     await storeData(env, newEntries)
     return newEntries
   }
@@ -154,6 +179,7 @@ export async function getHostsData(env: Bindings, useOptimization: boolean = fal
         entries.push([domainData.ip, domain])
       }
     }
+    console.log(`Loaded ${entries.length} entries from KV`)
     return entries
   } catch (error) {
     console.error("Error getting hosts data:", error)
@@ -161,6 +187,7 @@ export async function getHostsData(env: Bindings, useOptimization: boolean = fal
   }
 }
 
+// 更新 hosts 数据
 export async function updateHostsData(
   env: Bindings,
   newEntries?: HostEntry[]
@@ -169,7 +196,12 @@ export async function updateHostsData(
     const currentTime = new Date().toISOString()
     const kvData = (await env.custom_hosts.get("domain_data", {
       type: "json",
-    })) as KVData | null || { domain_data: {}, lastUpdated: currentTime }
+    })) as KVData | null || { 
+      domain_data: {} as DomainDataList, 
+      lastUpdated: currentTime,
+      updateCount: 0,
+      version: "1.0.0"
+    }
 
     if (!newEntries) {
       // 只更新检查时间
@@ -189,22 +221,26 @@ export async function updateHostsData(
           ip,
           lastUpdated: hasChanged ? currentTime : oldData?.lastUpdated || currentTime,
           lastChecked: currentTime,
+          responseTime: Date.now() - new Date(currentTime).getTime(),
+          provider: 'multiple-dns',
+          isOptimized: true,
+          resolvedAt: currentTime
         }
       }
     }
 
     kvData.lastUpdated = currentTime
+    kvData.updateCount = (kvData.updateCount || 0) + 1
     await env.custom_hosts.put("domain_data", JSON.stringify(kvData))
+    console.log(`Updated ${Object.keys(kvData.domain_data).length} domains in KV`)
   } catch (error) {
     console.error("Error updating hosts data:", error)
   }
 }
 
+// 格式化 hosts 文件
 export function formatHostsFile(entries: HostEntry[]): string {
-  // 过滤掉解析失败的域名（IP为"未解析"的）
-  const validEntries = entries.filter(([ip]) => ip !== '未解析' && ip !== '0.0.0.0')
-  
-  const content = validEntries
+  const content = entries
     .map(([ip, domain]) => `${ip.padEnd(30)}${domain}`)
     .join("\n")
 
@@ -219,13 +255,13 @@ export function formatHostsFile(entries: HostEntry[]): string {
   )
 }
 
-// 修改：获取单个域名数据的方法，直接从爬虫获取实时数据
+// 获取单个域名数据
 export async function getDomainData(
   env: Bindings,
   domain: string
 ): Promise<DomainData | null> {
   try {
-    const ip = await fetchIPFromIPAddress(domain)
+    const ip = await fetchIPFromMultipleDNS(domain)
     if (!ip) {
       return null
     }
@@ -233,12 +269,21 @@ export async function getDomainData(
     const currentTime = new Date().toISOString()
     const kvData = (await env.custom_hosts.get("domain_data", {
       type: "json",
-    })) as KVData | null || { domain_data: {}, lastUpdated: currentTime }
+    })) as KVData | null || { 
+      domain_data: {} as DomainDataList, 
+      lastUpdated: currentTime,
+      updateCount: 0,
+      version: "1.0.0"
+    }
 
     const newData: DomainData = {
       ip,
       lastUpdated: currentTime,
       lastChecked: currentTime,
+      responseTime: Date.now() - new Date(currentTime).getTime(),
+      provider: 'multiple-dns',
+      isOptimized: true,
+      resolvedAt: currentTime
     }
 
     kvData.domain_data[domain] = newData
@@ -252,15 +297,15 @@ export async function getDomainData(
   }
 }
 
-// 修改：清空 KV 并重新获取所有数据
-export async function resetHostsData(env: Bindings, useOptimization: boolean = false): Promise<HostEntry[]> {
+// 重置 hosts 数据
+export async function resetHostsData(env: Bindings): Promise<HostEntry[]> {
   try {
     console.log("Clearing KV data...")
     await env.custom_hosts.delete("domain_data")
     console.log("KV data cleared")
 
     console.log("Fetching new data...")
-    const newEntries = await fetchLatestHostsData(useOptimization)
+    const newEntries = await fetchLatestHostsData()
     console.log("New entries fetched:", newEntries)
 
     await updateHostsData(env, newEntries)
@@ -273,226 +318,206 @@ export async function resetHostsData(env: Bindings, useOptimization: boolean = f
   }
 }
 
-// 新增：IP 优选测试函数
-async function testIPResponse(ip: string, domain: string, timeout: number = 5000): Promise<number> {
-  try {
-    const startTime = Date.now()
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeout)
-    
-    const response = await fetch(`https://${ip}`, {
-      method: 'HEAD',
-      headers: {
-        'Host': domain,
-        'User-Agent': 'Mozilla/5.0 (compatible; github-hosts-optimizer/1.0)'
-      },
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-    const responseTime = Date.now() - startTime
-    
-    if (response.ok || response.status === 301 || response.status === 302) {
-      return responseTime
-    }
-    return Infinity
-  } catch (error) {
-    return Infinity
-  }
+// 自定义域名相关功能
+export interface CustomDomain {
+  domain: string
+  ip: string
+  addedAt: string
+  resolvedAt?: string
+  standardIp?: string
+  optimizedIp?: string
+  resolveMethod?: string
+  isActive?: boolean
 }
 
-// 新增：获取域名的多个 IP 地址
-export async function fetchAllIPsForDomain(domain: string): Promise<string[]> {
-  const ips: Set<string> = new Set()
-  
-  // 从多个 DNS 提供商获取 IP
-  for (const provider of DNS_PROVIDERS) {
-    try {
-      const response = await retry(() =>
-        fetch(provider.url(domain), { headers: provider.headers })
-      )
-
-      if (!response.ok) continue
-
-      const data = (await response.json()) as DnsResponse
-      const aRecords = data.Answer?.filter((answer) => answer.type === 1)
-      
-      aRecords?.forEach(record => {
-        if (record.data && /^\d+\.\d+\.\d+\.\d+$/.test(record.data)) {
-          ips.add(record.data)
-        }
-      })
-    } catch (error) {
-      console.error(`Error with DNS provider ${provider.name}:`, error)
-    }
-  }
-  
-  return Array.from(ips)
-}
-
-// 新增：优选域名最佳 IP
-export async function optimizeDomainIP(domain: string): Promise<{ ip: string, responseTime: number } | null> {
+// 添加自定义域名
+export async function addCustomDomain(
+  env: Bindings,
+  domain: string,
+  ip?: string
+): Promise<CustomDomain | null> {
   try {
-    const ips = await fetchAllIPsForDomain(domain)
+    console.log(`Adding custom domain: ${domain}`)
     
-    if (ips.length === 0) {
-      return null
+    let resolvedIp = ip
+    let standardIp: string | undefined
+    let optimizedIp: string | undefined
+    let resolveMethod = 'manual'
+    
+    if (!ip) {
+      // 如果没有提供 IP，尝试解析
+      const resolvedResult = await fetchIPFromMultipleDNS(domain)
+      if (!resolvedResult) {
+        console.error(`Failed to resolve domain: ${domain}`)
+        return null
+      }
+      resolvedIp = resolvedResult
+      standardIp = resolvedResult
+      optimizedIp = resolvedResult
+      resolveMethod = 'dns'
+    } else {
+      // 如果提供了 IP，也尝试获取标准解析作为对比
+      standardIp = await fetchIPFromMultipleDNS(domain) || undefined
+      optimizedIp = ip
+      resolveMethod = 'manual'
     }
-    
-    console.log(`Testing ${ips.length} IPs for domain: ${domain}`)
-    
-    // 并发测试所有 IP 的响应时间
-    const testResults = await Promise.all(
-      ips.map(async (ip) => {
-        const responseTime = await testIPResponse(ip, domain)
-        return { ip, responseTime }
-      })
-    )
-    
-    // 筛选出有效的 IP（响应时间不是 Infinity）
-    const validResults = testResults.filter(result => result.responseTime !== Infinity)
-    
-    if (validResults.length === 0) {
-      // 如果没有有效的 IP，返回第一个可用的 IP
-      return ips.length > 0 ? { ip: ips[0], responseTime: Infinity } : null
+
+    const customDomain: CustomDomain = {
+      domain,
+      ip: resolvedIp!,
+      addedAt: new Date().toISOString(),
+      resolvedAt: new Date().toISOString(),
+      standardIp,
+      optimizedIp,
+      resolveMethod,
+      isActive: true
     }
+
+    // 获取现有的自定义域名列表
+    const existing = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomain[] || []
     
-    // 按响应时间排序，返回最快的 IP
-    validResults.sort((a, b) => a.responseTime - b.responseTime)
+    // 检查是否已存在
+    const existingIndex = existing.findIndex(cd => cd.domain === domain)
+    if (existingIndex >= 0) {
+      existing[existingIndex] = customDomain
+      console.log(`Updated existing custom domain: ${domain}`)
+    } else {
+      existing.push(customDomain)
+      console.log(`Added new custom domain: ${domain}`)
+    }
+
+    await env.custom_hosts.put("custom_domains", JSON.stringify(existing))
     
-    console.log(`Best IP for ${domain}: ${validResults[0].ip} (${validResults[0].responseTime}ms)`)
-    return validResults[0]
+    console.log(`Custom domain ${domain} -> ${resolvedIp} saved successfully`)
+    return customDomain
   } catch (error) {
-    console.error(`Error optimizing IP for domain ${domain}:`, error)
+    console.error(`Error adding custom domain ${domain}:`, error)
     return null
   }
 }
 
-// 新增：自定义域名管理函数
-export async function getCustomDomains(env: Bindings): Promise<CustomDomainList> {
+// 获取自定义域名列表
+export async function getCustomDomains(env: Bindings): Promise<CustomDomain[]> {
   try {
-    const data = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomainList | null
-    return data || {}
+    return await migrateCustomDomainsData(env)
   } catch (error) {
     console.error("Error getting custom domains:", error)
-    return {}
+    return []
   }
 }
 
-export async function addCustomDomain(env: Bindings, domain: string, description?: string): Promise<boolean> {
-  try {
-    const customDomains = await getCustomDomains(env)
-    
-    // 立即测试域名解析
-    console.log(`正在测试新添加的域名: ${domain}`)
-    const testIp = await fetchIPFromIPAddress(domain)
-    console.log(`域名 ${domain} 解析测试结果: ${testIp || '解析失败'}`)
-    
-    customDomains[domain] = {
-      domain,
-      description,
-      addedAt: new Date().toISOString(),
-      ip: testIp || undefined // 保存测试解析的IP
-    }
-    
-    await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
-    console.log(`域名 ${domain} 已成功添加到自定义域名列表`)
-    return true
-  } catch (error) {
-    console.error("Error adding custom domain:", error)
-    return false
-  }
-}
-
+// 删除自定义域名
 export async function removeCustomDomain(env: Bindings, domain: string): Promise<boolean> {
   try {
-    const customDomains = await getCustomDomains(env)
+    const existing = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomain[] || []
+    const filtered = existing.filter(cd => cd.domain !== domain)
     
-    if (customDomains[domain]) {
-      delete customDomains[domain]
-      await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
+    if (filtered.length < existing.length) {
+      await env.custom_hosts.put("custom_domains", JSON.stringify(filtered))
+      console.log(`Removed custom domain: ${domain}`)
       return true
     }
     
+    console.log(`Custom domain not found: ${domain}`)
     return false
   } catch (error) {
-    console.error("Error removing custom domain:", error)
+    console.error(`Error removing custom domain ${domain}:`, error)
     return false
   }
 }
 
-export async function optimizeCustomDomain(env: Bindings, domain: string): Promise<OptimizationResult | null> {
-  try {
-    const result = await optimizeDomainIP(domain)
-    
-    if (!result) {
-      return null
-    }
-    
-    // 更新自定义域名的最后更新时间
-    const customDomains = await getCustomDomains(env)
-    if (customDomains[domain]) {
-      customDomains[domain].lastUpdated = new Date().toISOString()
-      await env.custom_hosts.put("custom_domains", JSON.stringify(customDomains))
-    }
-    
-    return {
-      domain,
-      bestIp: result.ip,
-      responseTime: result.responseTime,
-      testTime: new Date().toISOString()
-    }
-  } catch (error) {
-    console.error(`Error optimizing custom domain ${domain}:`, error)
-    return null
-  }
-}
-
-export async function fetchCustomDomainsData(env: Bindings, useOptimization: boolean = false): Promise<HostEntry[]> {
+// 获取包含自定义域名的完整数据
+export async function fetchCustomDomainsData(env: Bindings): Promise<HostEntry[]> {
   try {
     const customDomains = await getCustomDomains(env)
-    const domains = Object.keys(customDomains)
+    const customEntries: HostEntry[] = customDomains
+      .filter(cd => cd.isActive !== false)
+      .map(cd => [cd.ip, cd.domain])
     
-    console.log(`fetchCustomDomainsData: 找到 ${domains.length} 个自定义域名:`, domains)
-    
-    if (domains.length === 0) {
-      return []
-    }
-    
-    const entries: HostEntry[] = []
-    
-    for (const domain of domains) {
-      let ip: string | null = null
-      
-      console.log(`正在处理自定义域名: ${domain}, 优化模式: ${useOptimization}`)
-      
-      if (useOptimization) {
-        const optimized = await optimizeDomainIP(domain)
-        if (optimized) {
-          ip = optimized.ip
-          console.log(`域名 ${domain} 优选结果: ${ip} (${optimized.responseTime}ms)`)
-        } else {
-          console.warn(`域名 ${domain} 优选失败`)
-        }
-      } else {
-        ip = await fetchIPFromIPAddress(domain)
-        console.log(`域名 ${domain} 标准解析结果: ${ip}`)
-      }
-      
-      // 如果无法解析 IP，使用占位符表示未解析
-      if (!ip) {
-        console.warn(`Failed to resolve IP for domain: ${domain}`)
-        entries.push(['未解析', domain]) // 使用"未解析"占位符用于调试显示
-      } else {
-        entries.push([ip, domain])
-      }
-    }
-    
-    console.log(`fetchCustomDomainsData: 返回 ${entries.length} 个条目:`, entries.map(([ip, domain]) => `${domain}=${ip}`))
-    
-    return entries
+    console.log(`Found ${customEntries.length} active custom domains`)
+    return customEntries
   } catch (error) {
     console.error("Error fetching custom domains data:", error)
+    return []
+  }
+}
+
+// 获取包含自定义域名的完整 hosts 数据
+export async function getCompleteHostsData(env: Bindings): Promise<HostEntry[]> {
+  try {
+    console.log("Fetching complete hosts data (GitHub + Custom)")
+    
+    // 获取 GitHub 域名数据
+    const githubEntries = await getHostsData(env)
+    console.log(`GitHub entries: ${githubEntries.length}`)
+    
+    // 获取自定义域名数据
+    const customEntries = await fetchCustomDomainsData(env)
+    console.log(`Custom entries: ${customEntries.length}`)
+    
+    // 合并数据，避免重复域名（自定义域名优先）
+    const domainMap = new Map<string, string>()
+    
+    // 先添加 GitHub 域名
+    for (const [ip, domain] of githubEntries) {
+      domainMap.set(domain, ip)
+    }
+    
+    // 自定义域名覆盖同名的 GitHub 域名
+    for (const [ip, domain] of customEntries) {
+      domainMap.set(domain, ip)
+    }
+    
+    const allEntries: HostEntry[] = Array.from(domainMap.entries()).map(([domain, ip]) => [ip, domain])
+    console.log(`Total entries after deduplication: ${allEntries.length}`)
+    
+    return allEntries
+  } catch (error) {
+    console.error("Error getting complete hosts data:", error)
+    return await getHostsData(env) // 降级到只返回 GitHub 数据
+  }
+}
+
+// 数据迁移：将旧格式转换为新格式
+async function migrateCustomDomainsData(env: Bindings): Promise<CustomDomain[]> {
+  try {
+    // 尝试获取新格式数据
+    const newData = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomain[]
+    if (newData && Array.isArray(newData) && newData.length > 0) {
+      console.log(`Found new format data with ${newData.length} domains`)
+      return newData
+    }
+
+    // 尝试获取旧格式数据
+    const oldData = await env.custom_hosts.get("custom_domains", { type: "json" }) as Record<string, any>
+    if (!oldData || typeof oldData !== 'object') {
+      console.log("No custom domains data found")
+      return []
+    }
+
+    // 检查是否是旧格式（对象）
+    if (!Array.isArray(oldData)) {
+      console.log("Found old format data, migrating...")
+      const migratedData: CustomDomain[] = Object.values(oldData).map((item: any) => ({
+        domain: item.domain || '',
+        ip: item.ip || '',
+        addedAt: item.addedAt || new Date().toISOString(),
+        resolvedAt: item.addedAt || new Date().toISOString(),
+        standardIp: item.ip,
+        optimizedIp: item.ip,
+        resolveMethod: 'migrated',
+        isActive: true
+      }))
+
+      // 保存新格式数据
+      await env.custom_hosts.put("custom_domains", JSON.stringify(migratedData))
+      console.log(`Migrated ${migratedData.length} domains to new format`)
+      return migratedData
+    }
+
+    return oldData as CustomDomain[]
+  } catch (error) {
+    console.error("Error migrating custom domains data:", error)
     return []
   }
 }
