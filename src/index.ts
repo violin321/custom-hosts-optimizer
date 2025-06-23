@@ -47,14 +47,26 @@ const apiAuth = async (c: any, next: any) => {
   )
   
   if (isProtectedAPI) {
-    // 使用默认管理后台地址作为 API Key（去掉开头的 / ）
-    const adminPathAsApiKey = "admin-x7k9m3q2"
-    
-    // 检查 Referer 头，确保请求来自管理后台
+    // 动态获取管理后台地址作为 API Key
     const referer = c.req.header('referer') || c.req.header('Referer')
-    
-    // API Key 验证 - 使用管理后台地址作为验证密钥
     const apiKey = c.req.header('x-api-key') || c.req.query('key')
+    
+    // 从referer或其他方式动态获取管理路径
+    let adminPathAsApiKey = "admin-x7k9m3q2" // 默认值
+    
+    if (referer) {
+      // 从referer中提取路径，例如：http://localhost:8787/custom-admin -> custom-admin
+      const refererUrl = new URL(referer)
+      const pathParts = refererUrl.pathname.split('/').filter(p => p)
+      if (pathParts.length > 0) {
+        adminPathAsApiKey = pathParts[0]
+      }
+    } else if (apiKey) {
+      // 如果没有referer，直接使用API Key作为管理路径
+      adminPathAsApiKey = apiKey
+    }
+    
+    console.log(`API 访问验证: path=${path}, referer=${referer}, apiKey=${apiKey}, adminPath=${adminPathAsApiKey}`)
     
     // 验证请求来源 - 检查是否从管理后台访问
     const isValidReferer = referer && referer.includes(`/${adminPathAsApiKey}`)
@@ -392,17 +404,6 @@ admin.get("/", async (c) => {
         <div id="alert-container"></div>
 
         <!-- 统计信息 -->
-        <!-- 系统设置 -->
-        <div class="card">
-            <h3>⚙️ 系统设置</h3>
-            <div class="alert" style="background: #e6f3ff; color: #0066cc; border: 1px solid #b3d9ff; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-                <h4>🔑 API Key 说明</h4>
-                <p><strong>API Key 已简化</strong>：现在使用管理后台地址作为 API Key，无需额外配置。</p>
-                <p><strong>当前 API Key</strong>：<code>admin-x7k9m3q2</code></p>
-                <p><strong>使用方法</strong>：在外部调用 API 时，使用上述值作为 API Key 参数。</p>
-            </div>
-        </div>
-
         <div class="stats">
             <div class="stat-card">
                 <div class="stat-number" id="total-domains">-</div>
@@ -448,14 +449,17 @@ admin.get("/", async (c) => {
     </div>
 
     <script>
+        // 动态获取当前管理路径作为API Key
+        const currentPath = window.location.pathname;
+        const apiKey = currentPath.startsWith('/') ? currentPath.substring(1) : currentPath;
+        console.log('当前管理路径API Key:', apiKey);
+        
         // 显示通知
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alert-container');
             const alert = document.createElement('div');
-            alert.className = \`alert alert-\${type}\`;
-            alert.innerHTML = \`
-                <span>\${message}</span>
-            \`;
+            alert.className = 'alert alert-' + type;
+            alert.innerHTML = '<span>' + message + '</span>';
             container.appendChild(alert);
             setTimeout(() => alert.remove(), 5000);
         }
@@ -476,10 +480,23 @@ admin.get("/", async (c) => {
 
         // 加载域名列表
         async function loadDomains() {
+            const container = document.getElementById('domain-list');
             try {
-                const response = await fetch('/api/custom-domains');
+                console.log('开始加载域名列表，API Key:', apiKey);
+                const response = await fetch('/api/custom-domains', {
+                    headers: {
+                        'x-api-key': apiKey
+                    }
+                });
+                
+                console.log('API响应状态:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error('API请求失败: ' + response.status + ' ' + response.statusText);
+                }
+                
                 const domainsData = await response.json();
-                const container = document.getElementById('domain-list');
+                console.log('获取到的域名数据:', domainsData);
                 
                 // 将对象转换为数组
                 let domains = [];
@@ -500,29 +517,33 @@ admin.get("/", async (c) => {
                 container.innerHTML = domains.map(domain => {
                     // 安全地处理时间戳
                     let timeStr = '未知时间';
-                    if (domain.timestamp && typeof domain.timestamp === 'number' && domain.timestamp > 0) {
+                    const timestamp = domain.timestamp || domain.addedAt;
+                    if (timestamp) {
                         try {
-                            timeStr = new Date(domain.timestamp).toLocaleString();
+                            const date = new Date(timestamp);
+                            if (!isNaN(date.getTime())) {
+                                timeStr = date.toLocaleString();
+                            }
                         } catch (e) {
                             timeStr = '无效时间';
                         }
                     }
                     
-                    return \`
-                    <div class="domain-item">
-                        <div class="domain-info">
-                            <strong>\${domain.domain}</strong>
-                            \${domain.description ? \`<br><small>\${domain.description}</small>\` : ''}
-                            <br><small>IP: \${domain.ip || '未解析'} | 添加时间: \${timeStr}</small>
-                        </div>
-                        <div class="domain-actions">
-                            <button class="btn btn-success btn-small" onclick="optimizeDomain('\${domain.domain}')">🚀 优选</button>
-                            <button class="btn btn-danger btn-small" onclick="removeDomain('\${domain.domain}')">🗑️ 删除</button>
-                        </div>
-                    </div>
-                    \`;
+                    return '<div class="domain-item">' +
+                        '<div class="domain-info">' +
+                            '<strong>' + domain.domain + '</strong>' +
+                            (domain.description ? '<br><small>' + domain.description + '</small>' : '') +
+                            '<br><small>IP: ' + (domain.ip || '未解析') + ' | 添加时间: ' + timeStr + '</small>' +
+                        '</div>' +
+                        '<div class="domain-actions">' +
+                            '<button class="btn btn-success btn-small" onclick="optimizeDomain(\\'' + domain.domain + '\\')">🚀 优选</button>' +
+                            '<button class="btn btn-danger btn-small" onclick="removeDomain(\\'' + domain.domain + '\\')">🗑️ 删除</button>' +
+                        '</div>' +
+                    '</div>';
                 }).join('');
             } catch (error) {
+                console.error('加载域名列表失败:', error);
+                container.innerHTML = '<p style="text-align: center; color: #e53e3e; padding: 40px;">加载失败: ' + error.message + '</p>';
                 showAlert('加载域名列表失败: ' + error.message, 'error');
             }
         }
@@ -552,13 +573,16 @@ admin.get("/", async (c) => {
             try {
                 const response = await fetch('/api/custom-domains/batch', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
                     body: JSON.stringify({ domains })
                 });
 
                 const result = await response.json();
                 if (response.ok) {
-                    showAlert(\`批量操作完成: 成功 \${result.added} 个，失败 \${result.failed} 个\`);
+                    showAlert('批量操作完成: 成功 ' + result.added + ' 个，失败 ' + result.failed + ' 个');
                     if (result.errors.length > 0) {
                         console.log('失败的域名:', result.errors);
                     }
@@ -575,16 +599,19 @@ admin.get("/", async (c) => {
 
         // 删除域名
         async function removeDomain(domain) {
-            if (!confirm(\`确定要删除域名 \${domain} 吗？\`)) return;
+            if (!confirm('确定要删除域名 ' + domain + ' 吗？')) return;
 
             try {
-                const response = await fetch(\`/api/custom-domains/\${encodeURIComponent(domain)}\`, {
-                    method: 'DELETE'
+                const response = await fetch('/api/custom-domains/' + encodeURIComponent(domain), {
+                    method: 'DELETE',
+                    headers: {
+                        'x-api-key': apiKey
+                    }
                 });
 
                 const result = await response.json();
                 if (response.ok) {
-                    showAlert(\`域名 \${domain} 删除成功\`);
+                    showAlert('域名 ' + domain + ' 删除成功');
                     loadDomains();
                     loadStats();
                 } else {
@@ -597,16 +624,19 @@ admin.get("/", async (c) => {
 
         // 优选域名
         async function optimizeDomain(domain) {
-            showAlert(\`正在优选域名 \${domain}...\`);
+            showAlert('正在优选域名 ' + domain + '...');
             
             try {
-                const response = await fetch(\`/api/optimize/\${encodeURIComponent(domain)}\`, {
-                    method: 'POST'
+                const response = await fetch('/api/optimize/' + encodeURIComponent(domain), {
+                    method: 'POST',
+                    headers: {
+                        'x-api-key': apiKey
+                    }
                 });
 
                 const result = await response.json();
                 if (response.ok) {
-                    showAlert(\`域名 \${domain} 优选完成，最佳IP: \${result.bestIp}，响应时间: \${result.responseTime}ms\`);
+                    showAlert('域名 ' + domain + ' 优选完成，最佳IP: ' + result.bestIp + '，响应时间: ' + result.responseTime + 'ms');
                     loadDomains();
                 } else {
                     showAlert(result.error || '优选失败', 'error');
@@ -622,12 +652,15 @@ admin.get("/", async (c) => {
 
             try {
                 const response = await fetch('/api/custom-domains', {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {
+                        'x-api-key': apiKey
+                    }
                 });
 
                 if (response.ok) {
                     const result = await response.json();
-                    showAlert(\`清空完成，删除了 \${result.count} 个域名\`);
+                    showAlert('清空完成，删除了 ' + result.count + ' 个域名');
                 } else {
                     const error = await response.json();
                     showAlert(error.error || '清空操作失败', 'error');
@@ -643,10 +676,7 @@ admin.get("/", async (c) => {
         // 加载系统配置
         async function loadSystemConfig() {
             // API Key 现在使用管理后台地址，无需额外配置
-            console.log('API Key 已简化为使用管理后台地址：admin-x7k9m3q2');
-        }
-                console.error('加载系统配置失败:', error);
-            }
+            console.log('API Key 已简化为使用管理后台地址:', apiKey);
         }
 
         // 页面加载时初始化
@@ -1179,7 +1209,7 @@ app.delete("/api/cache", async (c) => {
 // 管理后台路由
 app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
-// 域名查询路由
+// 通用路由处理
 app.get("*", async (c) => {
   const path = c.req.path
   
