@@ -445,21 +445,18 @@ admin.get("/", async (c) => {
             if (!confirm('确定要清空所有自定义域名吗？此操作不可恢复！')) return;
 
             try {
-                const domains = await fetch('/api/custom-domains').then(r => r.json());
-                let successCount = 0;
-                
-                for (const domain of domains) {
-                    try {
-                        await fetch(\`/api/custom-domains/\${encodeURIComponent(domain.domain)}\`, {
-                            method: 'DELETE'
-                        });
-                        successCount++;
-                    } catch (error) {
-                        console.error(\`删除 \${domain.domain} 失败:\`, error);
-                    }
-                }
+                const response = await fetch('/api/custom-domains', {
+                    method: 'DELETE'
+                });
 
-                showAlert(\`清空完成，删除了 \${successCount} 个域名\`);
+                if (response.ok) {
+                    const result = await response.json();
+                    showAlert(\`清空完成，删除了 \${result.count} 个域名\`);
+                } else {
+                    const error = await response.json();
+                    showAlert(error.error || '清空操作失败', 'error');
+                }
+                
                 loadDomains();
                 loadStats();
             } catch (error) {
@@ -658,6 +655,29 @@ app.get("/:domain", async (c) => {
   }
 
   return c.json(data)
+})
+
+// 批量清空自定义域名 API
+app.delete("/api/custom-domains", async (c) => {
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    const domainNames = Object.keys(customDomains)
+    
+    if (domainNames.length === 0) {
+      return c.json({ message: "No custom domains to clear", count: 0 })
+    }
+    
+    // 直接清空 KV 存储
+    await c.env.custom_hosts.delete("custom_domains")
+    
+    return c.json({ 
+      message: "All custom domains cleared successfully", 
+      count: domainNames.length 
+    })
+  } catch (error) {
+    console.error("Error clearing custom domains:", error)
+    return c.json({ error: "Failed to clear custom domains" }, 500)
+  }
 })
 
 export default {
