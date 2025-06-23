@@ -21,129 +21,8 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 // 管理员认证中间件 - 使用URL参数验证
 const adminAuth = async (c: any, next: any) => {
-  const username = c.req.query("user");
-  const password = c.req.query("pass");
-  
-  // 预设的管理员凭据
-  const validUsername = "admin";
-  const validPassword = "admin123";
-
-  // 检查URL参数中的凭据
-  if (username === validUsername && password === validPassword) {
-    // 认证成功，继续执行后续中间件
-    return await next();
-  }
-
-  // 认证失败，返回登录页面
-  const loginHtml = `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理后台登录</title>
-    <style>
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-        }
-        .login-container {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            width: 100%;
-            max-width: 400px;
-        }
-        .login-title {
-            text-align: center;
-            margin-bottom: 2rem;
-            color: #333;
-        }
-        .form-group {
-            margin-bottom: 1rem;
-        }
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #555;
-        }
-        input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 1rem;
-            box-sizing: border-box;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-        }
-        .login-btn {
-            width: 100%;
-            padding: 0.75rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 1rem;
-            cursor: pointer;
-            margin-top: 1rem;
-        }
-        .login-btn:hover {
-            background: #5a6fd8;
-        }
-        .error {
-            color: #e74c3c;
-            margin-top: 1rem;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <h2 class="login-title">🔐 管理后台登录</h2>
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="username">用户名:</label>
-                <input type="text" id="username" name="username" value="admin" required>
-            </div>
-            <div class="form-group">
-                <label for="password">密码:</label>
-                <input type="password" id="password" name="password" placeholder="请输入密码" required>
-            </div>
-            <button type="submit" class="login-btn">登录</button>
-            <div class="error" id="error" style="display: none;">用户名或密码错误</div>
-        </form>
-    </div>
-    <script>
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
-            // 构建带认证参数的URL
-            const adminUrl = '/admin-x7k9m3q2?user=' + encodeURIComponent(username) + '&pass=' + encodeURIComponent(password);
-            window.location.href = adminUrl;
-        });
-        
-        // 检查是否有错误参数
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('error') === 'auth') {
-            document.getElementById('error').style.display = 'block';
-        }
-    </script>
-</body>
-</html>`;
-  
-  return c.html(loginHtml);
+  // 直接通过认证，不需要账号密码
+  return await next();
 }
 
 // 管理后台路由组
@@ -537,23 +416,52 @@ admin.get("/", async (c) => {
                 debugSection.style.display = debugSection.style.display === 'none' ? 'block' : 'none';
                 
                 if (debugSection.style.display === 'block') {
-                    const response = await fetch('/debug');
+                    console.log('开始加载调试信息...');
+                    const response = await fetch('./debug');
+                    console.log('调试信息响应状态:', response.status);
+                    
+                    if (!response.ok) {
+                        throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+                    }
+                    
                     const data = await response.json();
+                    console.log('调试信息数据:', data);
                     
-                    document.getElementById('stored-count').textContent = data.stored_count;
-                    document.getElementById('resolved-opt-count').textContent = data.resolved_count_opt;
-                    document.getElementById('resolved-std-count').textContent = data.resolved_count_no_opt;
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
                     
-                    document.getElementById('stored-domains').innerHTML = 
-                        data.stored_domains.map(domain => \`<div>\${domain}</div>\`).join('');
+                    // 安全地设置数据，确保元素存在
+                    const storedCountEl = document.getElementById('stored-count');
+                    const resolvedOptCountEl = document.getElementById('resolved-opt-count');
+                    const resolvedStdCountEl = document.getElementById('resolved-std-count');
+                    const storedDomainsEl = document.getElementById('stored-domains');
+                    const resolvedOptDomainsEl = document.getElementById('resolved-opt-domains');
+                    const resolvedStdDomainsEl = document.getElementById('resolved-std-domains');
                     
-                    document.getElementById('resolved-opt-domains').innerHTML = 
-                        data.resolved_with_optimization.map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('');
+                    if (storedCountEl) storedCountEl.textContent = data.stored_count || 0;
+                    if (resolvedOptCountEl) resolvedOptCountEl.textContent = data.resolved_count_opt || 0;
+                    if (resolvedStdCountEl) resolvedStdCountEl.textContent = data.resolved_count_no_opt || 0;
                     
-                    document.getElementById('resolved-std-domains').innerHTML = 
-                        data.resolved_without_optimization.map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('');
+                    if (storedDomainsEl) {
+                        storedDomainsEl.innerHTML = (data.stored_domains || [])
+                            .map(domain => \`<div>\${domain}</div>\`).join('') || '<div>暂无数据</div>';
+                    }
+                    
+                    if (resolvedOptDomainsEl) {
+                        resolvedOptDomainsEl.innerHTML = (data.resolved_with_optimization || [])
+                            .map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('') || '<div>暂无数据</div>';
+                    }
+                    
+                    if (resolvedStdDomainsEl) {
+                        resolvedStdDomainsEl.innerHTML = (data.resolved_without_optimization || [])
+                            .map(item => \`<div>\${item.ip} → \${item.domain}</div>\`).join('') || '<div>暂无数据</div>';
+                    }
+                    
+                    console.log('调试信息加载完成');
                 }
             } catch (error) {
+                console.error('加载调试信息失败:', error);
                 showAlert('加载调试信息失败: ' + error.message, 'error');
             }
         }
@@ -736,6 +644,32 @@ admin.get("/", async (c) => {
 </html>`
 
   return c.html(adminHtml)
+})
+
+// 管理后台调试端点
+admin.get("/debug", async (c) => {
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    const hostsData = await fetchCustomDomainsData(c.env, true) // 使用优化模式
+    const hostsDataNoOpt = await fetchCustomDomainsData(c.env, false) // 不使用优化模式
+    
+    // 统计实际解析成功的域名数量（排除"未解析"的）
+    const resolvedWithOpt = hostsData.filter(([ip]) => ip !== '未解析')
+    const resolvedWithoutOpt = hostsDataNoOpt.filter(([ip]) => ip !== '未解析')
+    
+    return c.json({
+      stored_domains: Object.keys(customDomains),
+      stored_count: Object.keys(customDomains).length,
+      resolved_with_optimization: hostsData.map(([ip, domain]) => ({ domain, ip })),
+      resolved_without_optimization: hostsDataNoOpt.map(([ip, domain]) => ({ domain, ip })),
+      resolved_count_opt: resolvedWithOpt.length,
+      resolved_count_no_opt: resolvedWithoutOpt.length
+    })
+  } catch (error) {
+    return c.json({ 
+      error: "Debug failed: " + (error instanceof Error ? error.message : String(error)) 
+    }, 500)
+  }
 })
 
 // 将管理后台路由组应用到应用中，并使用认证中间件
