@@ -78,7 +78,7 @@ Fork 仓库后享受自动化部署：
 3. 点击 "New repository secret"
 4. **根据您选择的 API 方式添加 Secrets**：
 
-**如果使用 Global API Key（推荐，步骤 2 第一种方式）：**
+**如果使用 Global API Key（推荐）：**
 - **第一个 Secret**：
   - **Name**: `CLOUDFLARE_EMAIL`
   - **Value**: 您的 Cloudflare 账户邮箱
@@ -94,7 +94,7 @@ Fork 仓库后享受自动化部署：
 - **Name**: `KV_NAMESPACE_ID`
 - **Value**: 步骤 3 中复制的命名空间 ID
 
-⚠️ **注意**：选择一种认证方式即可，不需要同时设置两种！
+⚠️ **注意**：选择一种认证方式即可，不需要同时设置两种！项目已升级到 wrangler 4.21.0，完全支持环境变量认证。
 6. **复制创建的命名空间 ID**
 
 #### 步骤 5：配置 KV Namespace（安全方式）
@@ -358,6 +358,28 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 ## 📄 许可证
 
 本项目采用 [MIT 许可证](LICENSE)。
+
+#### 认证问题
+
+**症状**：GitHub Actions 部署失败，提示认证错误
+
+**解决方案**：
+1. **检查 Secrets 配置**
+   - Global API Key 方式：确认 `CLOUDFLARE_EMAIL` 和 `CLOUDFLARE_API_KEY` 正确设置
+   - API Token 方式：确认 `CLOUDFLARE_API_TOKEN` 正确设置
+   - 检查 `KV_NAMESPACE_ID` 是否正确
+
+2. **Wrangler 版本兼容性**
+   - 项目已升级到 wrangler 4.21.0，完全支持环境变量认证
+   - 如果仍有问题，可在 Actions 中添加调试：
+   ```yaml
+   - name: Debug Wrangler
+     run: npx wrangler --version
+   ```
+
+3. **API Key/Token 权限检查**
+   - Global API Key：需要账户的完整权限
+   - API Token：确保包含 `Zone:Zone:Read`、`Zone:Zone Settings:Edit`、`Account:Cloudflare Workers:Edit` 权限
 
 #### 避免常见错误
 
