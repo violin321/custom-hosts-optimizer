@@ -1301,7 +1301,7 @@ app.delete("/api/cache", async (c) => {
 // 管理后台路由
 app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
 
-// 动态后台路由 - 支持任意路径作为管理后台
+// 动态后台路由 - 只允许安全的管理后台路径
 app.get("/:adminPath", async (c) => {
   const adminPath = c.req.param("adminPath")
   
@@ -1311,6 +1311,23 @@ app.get("/:adminPath", async (c) => {
     return c.notFound()
   }
   
+  // 只允许特定格式的管理后台路径（安全限制）
+  const allowedAdminPatterns = [
+    /^admin-[a-z0-9]{8,16}$/,  // admin-xxxxxxxx 格式（8-16位字母数字）
+    /^[a-z]{3,8}-admin-[a-z0-9]{6,12}$/,  // xxx-admin-xxxxxx 格式
+    /^secure-[a-z0-9]{8,16}$/,  // secure-xxxxxxxx 格式
+    /^mgmt-[a-z0-9]{8,16}$/,    // mgmt-xxxxxxxx 格式
+  ]
+  
+  // 检查路径是否符合安全格式
+  const isValidAdminPath = allowedAdminPatterns.some(pattern => pattern.test(adminPath))
+  
+  if (!isValidAdminPath) {
+    console.log(`拒绝访问非法管理路径: ${adminPath}`)
+    return c.notFound()
+  }
+  
+  console.log(`允许访问安全管理路径: ${adminPath}`)
   // 返回管理后台页面
   return admin.fetch(new Request(c.req.url.replace(`/${adminPath}`, '/')), c.env)
 })

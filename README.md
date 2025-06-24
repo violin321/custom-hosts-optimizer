@@ -264,7 +264,15 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 
 ### 自定义管理后台地址（推荐）
 
-默认管理后台地址：`/admin-x7k9m3q2`，建议修改为自定义路径提高安全性。
+默认管理后台地址：`/admin-x7k9m3q2`，**强烈建议修改为自定义路径提高安全性**。
+
+**⚠️ 安全限制**：出于安全考虑，管理后台路径必须符合以下格式之一：
+- `admin-[8-16位字母数字]` （例如：`admin-abc12345`）
+- `[3-8位字母]-admin-[6-12位字母数字]` （例如：`my-admin-secret123`）
+- `secure-[8-16位字母数字]` （例如：`secure-xyz98765`）
+- `mgmt-[8-16位字母数字]` （例如：`mgmt-manager001`）
+
+**不符合格式的路径（如 `admin`、`management`、`test` 等）将被拒绝访问，返回 404 错误。**
 
 1. **Fork 仓库并修改代码**
    - 编辑 `src/index.ts`，搜索 `admin-x7k9m3q2` 并替换为你的自定义路径
@@ -342,7 +350,15 @@ curl -X POST "https://your-worker.workers.dev/api/optimize/cdn.example.com?key=a
 
 ### 自定义管理后台地址（推荐）
 
-默认管理后台地址：`/admin-x7k9m3q2`，建议修改为自定义路径提高安全性。
+默认管理后台地址：`/admin-x7k9m3q2`，**强烈建议修改为自定义路径提高安全性**。
+
+**⚠️ 安全限制**：出于安全考虑，管理后台路径必须符合以下格式之一：
+- `admin-[8-16位字母数字]` （例如：`admin-abc12345`）
+- `[3-8位字母]-admin-[6-12位字母数字]` （例如：`my-admin-secret123`）
+- `secure-[8-16位字母数字]` （例如：`secure-xyz98765`）
+- `mgmt-[8-16位字母数字]` （例如：`mgmt-manager001`）
+
+**不符合格式的路径（如 `admin`、`management`、`test` 等）将被拒绝访问，返回 404 错误。**
 
 1. **Fork 仓库并修改代码**
    - 编辑 `src/index.ts`，搜索 `admin-x7k9m3q2` 并替换为你的自定义路径
