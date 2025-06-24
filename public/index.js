@@ -342,7 +342,7 @@ async function optimizeAllDomains() {
   console.log('开始执行全域名优选...')
   
   const refreshBtn = document.getElementById('refreshHosts')
-  const originalText = refreshBtn ? refreshBtn.textContent : '立即优选刷新'
+  const originalText = refreshBtn ? refreshBtn.textContent : '立即全域名优选'
   
   console.log('刷新按钮状态:', refreshBtn ? '找到' : '未找到')
   
@@ -354,7 +354,7 @@ async function optimizeAllDomains() {
     }
     
     updateHostsStatus('正在执行全域名优选，请稍候...', 'updating')
-    showMessage('开始执行全域名优选，这可能需要1-2分钟时间...', 'info')
+    showMessage('开始执行全域名优选（包括GitHub域名和自定义域名），这可能需要1-2分钟时间...', 'info')
     
     // 调用全域名优选API
     const controller = new AbortController()
@@ -374,43 +374,34 @@ async function optimizeAllDomains() {
     const result = await response.json()
     
     if (response.ok) {
-      showMessage(
-        `全域名优选完成！成功优选 ${result.optimized} 个域名，失败 ${result.failed} 个`, 
-        'success'
-      )
+      const githubCount = result.githubDomains || 0
+      const customTotal = result.customDomains?.total || 0
+      const customOptimized = result.customDomains?.optimized || 0
+      const customFailed = result.customDomains?.failed || 0
       
-      // 优选完成后，先调用缓存刷新API清理后端缓存
-      console.log('全域名优选完成，开始刷新后端缓存...')
-      updateHostsStatus('正在刷新缓存...', 'updating')
-      
-      try {
-        const cacheRefreshResponse = await fetch(`${baseUrl}/api/cache/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': 'main-page-refresh'
-          }
-        })
-        
-        if (cacheRefreshResponse.ok) {
-          console.log('后端缓存刷新成功')
-        } else {
-          console.warn('后端缓存刷新失败，但继续更新前端')
+      let message = `全域名优选完成！`
+      if (githubCount > 0) {
+        message += ` GitHub域名 ${githubCount} 个`
+      }
+      if (customTotal > 0) {
+        message += `，自定义域名: 成功 ${customOptimized} 个`
+        if (customFailed > 0) {
+          message += `，失败 ${customFailed} 个`
         }
-      } catch (cacheError) {
-        console.warn('调用缓存刷新API失败:', cacheError)
       }
       
-      // 清除前端缓存并重新加载hosts内容
-      console.log('清除前端缓存并重新加载hosts')
+      showMessage(message, 'success')
+      
+      // 清除前端缓存并立即重新加载hosts内容
+      console.log('全域名优选完成，清除前端缓存并重新加载hosts')
       cachedHostsContent = null
       lastHostsUpdate = null
       localStorage.removeItem('hosts_cache')
       localStorage.removeItem('hosts_cache_timestamp')
       
-      setTimeout(() => {
-        loadHosts(true) // 强制刷新hosts内容
-      }, 1000)
+      // 立即重新加载hosts内容（不需要延迟，因为后端已经完成了所有更新）
+      updateHostsStatus('正在更新显示内容...', 'updating')
+      loadHosts(true) // 强制刷新hosts内容
       
     } else {
       showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')

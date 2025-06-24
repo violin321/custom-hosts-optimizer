@@ -1027,80 +1027,88 @@ app.post("/api/optimize-all", async (c) => {
   try {
     console.log("开始执行全域名优选...")
     
-    // 获取所有自定义域名
+    // 第一步：重新获取最新的GitHub域名数据（这会触发所有GitHub域名的重新解析）
+    console.log("正在重新解析GitHub域名...")
+    const githubEntries = await fetchLatestHostsData()
+    await storeData(c.env, githubEntries)
+    console.log(`GitHub域名优选完成: ${githubEntries.length} 个域名`)
+    
+    // 第二步：优选所有自定义域名
     const customDomains = await getCustomDomains(c.env)
+    const customResults = []
+    const customErrors = []
+    let customSuccessCount = 0
     
-    if (!Array.isArray(customDomains) || customDomains.length === 0) {
-      return c.json({
-        message: "没有找到需要优选的自定义域名",
-        optimized: 0,
-        failed: 0,
-        results: []
-      })
-    }
-    
-    const results = []
-    const errors = []
-    let successCount = 0
-    
-    console.log(`找到 ${customDomains.length} 个自定义域名，开始优选...`)
-    
-    // 为每个域名执行优选
-    for (const domainData of customDomains) {
-      const domain = domainData.domain
+    if (Array.isArray(customDomains) && customDomains.length > 0) {
+      console.log(`找到 ${customDomains.length} 个自定义域名，开始优选...`)
       
-      try {
-        console.log(`正在优选域名: ${domain}`)
+      // 为每个自定义域名执行优选
+      for (const domainData of customDomains) {
+        const domain = domainData.domain
         
-        // 重新解析域名获取新的 IP
-        const newIp = await fetchIPFromMultipleDNS(domain)
-        
-        if (newIp) {
-          // 更新域名信息
-          const updateResult = await addCustomDomain(c.env, domain)
+        try {
+          console.log(`正在优选自定义域名: ${domain}`)
           
-          if (updateResult) {
-            results.push({
-              domain,
-              status: "success",
-              oldIp: domainData.ip,
-              newIp: newIp,
-              updated: domainData.ip !== newIp
-            })
-            successCount++
-            console.log(`域名 ${domain} 优选成功: ${newIp}`)
+          // 重新解析域名获取新的 IP
+          const newIp = await fetchIPFromMultipleDNS(domain)
+          
+          if (newIp) {
+            // 更新域名信息
+            const updateResult = await addCustomDomain(c.env, domain)
+            
+            if (updateResult) {
+              customResults.push({
+                domain,
+                status: "success",
+                oldIp: domainData.ip,
+                newIp: newIp,
+                updated: domainData.ip !== newIp
+              })
+              customSuccessCount++
+              console.log(`自定义域名 ${domain} 优选成功: ${newIp}`)
+            } else {
+              customErrors.push({
+                domain,
+                error: "更新失败"
+              })
+              console.log(`自定义域名 ${domain} 更新失败`)
+            }
           } else {
-            errors.push({
+            customErrors.push({
               domain,
-              error: "更新失败"
+              error: "DNS解析失败"
             })
-            console.log(`域名 ${domain} 更新失败`)
+            console.log(`自定义域名 ${domain} DNS解析失败`)
           }
-        } else {
-          errors.push({
+        } catch (error) {
+          customErrors.push({
             domain,
-            error: "DNS解析失败"
+            error: error instanceof Error ? error.message : "未知错误"
           })
-          console.log(`域名 ${domain} DNS解析失败`)
+          console.error(`自定义域名 ${domain} 优选失败:`, error)
         }
-      } catch (error) {
-        errors.push({
-          domain,
-          error: error instanceof Error ? error.message : "未知错误"
-        })
-        console.error(`域名 ${domain} 优选失败:`, error)
       }
+    } else {
+      console.log("没有找到自定义域名")
     }
     
-    console.log(`全域名优选完成: 成功 ${successCount} 个，失败 ${errors.length} 个`)
+    const totalOptimized = githubEntries.length + customSuccessCount
+    const totalFailed = customErrors.length
+    
+    console.log(`全域名优选完成: GitHub ${githubEntries.length} 个，自定义成功 ${customSuccessCount} 个，自定义失败 ${customErrors.length} 个`)
     
     return c.json({
-      message: `全域名优选完成: 成功 ${successCount} 个，失败 ${errors.length} 个`,
-      optimized: successCount,
-      failed: errors.length,
-      total: customDomains.length,
-      results,
-      errors
+      message: `全域名优选完成: GitHub域名 ${githubEntries.length} 个，自定义域名成功 ${customSuccessCount} 个，失败 ${customErrors.length} 个`,
+      optimized: totalOptimized,
+      failed: totalFailed,
+      githubDomains: githubEntries.length,
+      customDomains: {
+        total: customDomains?.length || 0,
+        optimized: customSuccessCount,
+        failed: customErrors.length
+      },
+      results: customResults,
+      errors: customErrors
     })
   } catch (error) {
     console.error("全域名优选失败:", error)
