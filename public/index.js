@@ -174,8 +174,10 @@ async function loadHosts(forceRefresh = false) {
   console.log(`loadHosts调用: forceRefresh=${forceRefresh}, 缓存时间=${lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : '无'}`)
   console.log('hosts元素状态:', hostsElement ? '找到' : '未找到')
   
-  // 如果有缓存且未过期且不是强制刷新，使用缓存
-  if (!forceRefresh && cachedHostsContent && lastHostsUpdate && 
+  // 强制刷新时跳过缓存检查
+  if (forceRefresh) {
+    console.log('强制刷新模式：跳过缓存检查，直接获取新数据')
+  } else if (cachedHostsContent && lastHostsUpdate && 
       (now - lastHostsUpdate < HOSTS_CACHE_DURATION)) {
     console.log('使用缓存数据显示hosts内容')
     hostsElement.textContent = cachedHostsContent
@@ -209,6 +211,7 @@ async function loadHosts(forceRefresh = false) {
     
     // 添加防缓存头，确保获取最新数据
     const fetchOptions = {
+      method: 'GET',
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -216,7 +219,11 @@ async function loadHosts(forceRefresh = false) {
       }
     }
     
-    const response = await fetch(url, fetchOptions)
+    // 如果是强制刷新，在URL中添加时间戳确保绕过所有缓存
+    const finalUrl = forceRefresh ? `${url}&_t=${now}` : url
+    console.log('最终请求URL:', finalUrl)
+    
+    const response = await fetch(finalUrl, fetchOptions)
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -237,6 +244,7 @@ async function loadHosts(forceRefresh = false) {
     
     // 更新缓存和显示内容
     const isContentChanged = cachedHostsContent !== hostsContent
+    const previousContent = cachedHostsContent
     cachedHostsContent = hostsContent
     lastHostsUpdate = now
     hostsElement.textContent = hostsContent
@@ -245,19 +253,29 @@ async function loadHosts(forceRefresh = false) {
     saveCache(hostsContent, now)
     console.log(`hosts内容${isContentChanged ? '已' : '未'}更新，已保存到缓存`)
     
-    // 更新状态
-    if (isContentChanged) {
-      updateHostsStatus('hosts 内容已更新', 'success')
+    // 如果是强制刷新，总是显示更新成功
+    if (forceRefresh) {
+      console.log('强制刷新完成，显示更新成功状态')
+      updateHostsStatus('hosts 内容已强制更新', 'success')
+      showMessage('hosts 内容已强制更新', 'success')
       setTimeout(() => {
         updateCountdown()
       }, 3000)
     } else {
-      updateCountdown()
-    }
-    
-    // 如果是后台更新且内容有变化，显示提示
-    if (!forceRefresh && isContentChanged) {
-      showMessage('hosts 内容已更新', 'success')
+      // 更新状态
+      if (isContentChanged) {
+        updateHostsStatus('hosts 内容已更新', 'success')
+        setTimeout(() => {
+          updateCountdown()
+        }, 3000)
+      } else {
+        updateCountdown()
+      }
+      
+      // 如果是后台更新且内容有变化，显示提示
+      if (isContentChanged) {
+        showMessage('hosts 内容已更新', 'success')
+      }
     }
     
     // 重新设置自动刷新定时器
@@ -448,7 +466,7 @@ async function optimizeAllDomains() {
       setTimeout(() => {
         console.log('开始重新加载hosts内容（包含自定义域名）')
         loadHosts(true) // 强制刷新hosts内容
-      }, 2000) // 延迟2秒确保后端数据同步
+      }, 3000) // 延迟3秒确保后端数据同步
       
     } else {
       showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')
@@ -739,6 +757,50 @@ window.debugCacheStatus = function() {
   }
 }
 
+// 调试功能：测试API响应
+window.debugTestAPI = async function() {
+  console.log('=== 调试：测试API响应 ===')
+  const baseUrl = window.location.origin
+  const params = new URLSearchParams()
+  params.append('optimize', 'true')
+  params.append('custom', 'true')
+  params.append('refresh', 'true')
+  
+  const url = `${baseUrl}/hosts?${params.toString()}&_t=${Date.now()}`
+  console.log('测试URL:', url)
+  
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    })
+    
+    if (response.ok) {
+      const content = await response.text()
+      console.log('API响应长度:', content.length)
+      console.log('API响应预览:', content.substring(0, 500) + '...')
+      
+      // 检查自定义域名
+      const customDomainCount = (content.match(/# Custom Domains|自定义域名/gi) || []).length
+      console.log('自定义域名标记数量:', customDomainCount)
+      
+      return { success: true, length: content.length, customDomains: customDomainCount }
+    } else {
+      console.error('API响应错误:', response.status, response.statusText)
+      return { success: false, error: `${response.status}: ${response.statusText}` }
+    }
+  } catch (error) {
+    console.error('API请求失败:', error)
+    return { success: false, error: error.message }
+  }
+}
+
 console.log('调试功能已加载:')
 console.log('- debugClearCache(): 清除缓存并重新加载')
 console.log('- debugCacheStatus(): 查看缓存状态')
+console.log('- debugTestAPI(): 测试API响应')
+console.log('- debugTestAPI(): 测试API响应')
