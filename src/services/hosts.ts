@@ -359,6 +359,7 @@ export interface CustomDomain {
   optimizedIp?: string
   resolveMethod?: string
   isActive?: boolean
+  isUpdate?: boolean  // 新增：标识是否为更新操作
 }
 
 // 添加自定义域名
@@ -409,8 +410,11 @@ export async function addCustomDomain(
     
     // 检查是否已存在
     const existingIndex = existing.findIndex(cd => cd.domain === domain)
+    let isUpdate = false
+    
     if (existingIndex >= 0) {
       existing[existingIndex] = customDomain
+      isUpdate = true
       console.log(`Updated existing custom domain: ${domain}`)
     } else {
       existing.push(customDomain)
@@ -420,7 +424,11 @@ export async function addCustomDomain(
     await env.custom_hosts.put("custom_domains", JSON.stringify(existing))
     
     console.log(`Custom domain ${domain} -> ${resolvedIp} saved successfully`)
-    return customDomain
+    // 返回结果，包含是否为更新操作的信息
+    return {
+      ...customDomain,
+      isUpdate
+    }
   } catch (error) {
     console.error(`Error adding custom domain ${domain}:`, error)
     return null

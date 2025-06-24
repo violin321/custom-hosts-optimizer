@@ -16,7 +16,7 @@ function showMessage(message, type = 'info') {
   container.className = `message ${type}`
   container.textContent = message
   
-  // 插入到当前活动选项卡的顶部
+  //  插入到当前活动选项卡的顶部
   const activeTab = document.querySelector('.tab-content.active')
   if (activeTab) {
     activeTab.insertBefore(container, activeTab.firstChild)
@@ -144,11 +144,11 @@ async function loadHosts(forceRefresh = false) {
   const hostsElement = document.getElementById("hosts")
   if (!hostsElement) {
     console.error('无法找到 hosts 元素，页面可能未完全加载')
-    // 等待 500ms 后重试
+    // 等待 1秒 后重试
     setTimeout(() => {
       console.log('重试加载 hosts 内容...')
       loadHosts(forceRefresh)
-    }, 500)
+    }, 1000)
     return
   }
 
@@ -185,16 +185,26 @@ async function loadHosts(forceRefresh = false) {
     const params = new URLSearchParams()
     if (!optimize) params.append('optimize', 'false')
     if (!custom) params.append('custom', 'false')
+    if (forceRefresh) params.append('refresh', 'true')
     
     const queryString = params.toString()
     const url = queryString ? `${baseUrl}/hosts?${queryString}` : `${baseUrl}/hosts`
     
+    console.log('发起 API 请求:', url)
     const response = await fetch(url)
-    if (!response.ok) throw new Error("Failed to load hosts")
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
     
     const hostsContent = await response.text()
     console.log(`成功获取hosts数据，长度: ${hostsContent.length}`)
     console.log('Hosts内容预览:', hostsContent.substring(0, 200) + '...')
+    
+    // 检查内容是否有效
+    if (!hostsContent || hostsContent.length < 100) {
+      throw new Error('获取的 hosts 内容为空或太短')
+    }
     
     // 更新缓存和显示内容
     const isContentChanged = cachedHostsContent !== hostsContent
@@ -456,6 +466,30 @@ async function optimizeDomain(domain) {
   return
 }
 
+// 状态检查函数
+async function checkServiceStatus() {
+  const statusIndicator = document.getElementById('status-indicator')
+  if (!statusIndicator) return
+  
+  try {
+    const response = await fetch(`${baseUrl}/hosts.json`)
+    if (response.ok) {
+      const data = await response.json()
+      statusIndicator.innerHTML = `🟢 服务正常运行 (${data.total} 条记录)`
+      statusIndicator.style.background = '#e8f5e8'
+      statusIndicator.style.color = '#2d5a2d'
+    } else {
+      statusIndicator.innerHTML = '🟡 服务响应异常'
+      statusIndicator.style.background = '#fff3cd'
+      statusIndicator.style.color = '#856404'
+    }
+  } catch (error) {
+    statusIndicator.innerHTML = '🔴 服务连接失败'
+    statusIndicator.style.background = '#f8d7da'
+    statusIndicator.style.color = '#721c24'
+  }
+}
+
 // 设置事件监听器
 function setupEventListeners() {
   console.log('设置事件监听器...')
@@ -519,6 +553,28 @@ function setupEventListeners() {
 // 初始化
 function init() {
   console.log('开始初始化...')
+  console.log('当前页面 URL:', window.location.href)
+  console.log('baseUrl:', baseUrl)
+  
+  // 检查关键元素是否存在
+  const hostsElement = document.getElementById("hosts")
+  const refreshBtn = document.getElementById('refreshHosts')
+  const tabElements = document.querySelectorAll('.tab')
+  
+  console.log('关键元素检查:')
+  console.log('- hosts 元素:', hostsElement ? '存在' : '不存在')
+  console.log('- 刷新按钮:', refreshBtn ? '存在' : '不存在')
+  console.log('- 选项卡元素数量:', tabElements.length)
+  
+  // 如果关键元素不存在，等待 DOM 完全加载后重试
+  if (!hostsElement || !refreshBtn) {
+    console.warn('关键元素缺失，2秒后重试初始化...')
+    setTimeout(() => {
+      console.log('重试初始化...')
+      init()
+    }, 2000)
+    return
+  }
   
   setupEventListeners()
   
@@ -534,13 +590,6 @@ function init() {
   // 恢复缓存
   const hasCachedData = restoreCache()
   console.log('缓存恢复状态:', hasCachedData)
-  
-  // 检查关键元素是否存在
-  const hostsElement = document.getElementById("hosts")
-  const refreshBtn = document.getElementById('refreshHosts')
-  console.log('关键元素检查:')
-  console.log('- hosts 元素:', hostsElement ? '存在' : '不存在')
-  console.log('- 刷新按钮:', refreshBtn ? '存在' : '不存在')
   
   // 加载初始内容
   if (currentTab === 'hosts') {
@@ -572,6 +621,9 @@ function init() {
   // 设置倒计时更新定时器
   setupCountdownTimer()
   
+  // 检查服务状态
+  checkServiceStatus()
+  
   console.log('初始化完成')
 }
 
@@ -601,3 +653,8 @@ document.addEventListener('visibilitychange', () => {
     }
   }
 })
+
+// 每分钟检查一次服务状态
+setInterval(() => {
+  checkServiceStatus()
+}, 60 * 1000) // 每分钟检查一次

@@ -144,6 +144,83 @@ app.get("/", async (c) => {
   }
 })
 
+// 静态资源路由
+app.get("/index.js", async (c) => {
+  try {
+    const js = await c.env.ASSETS.get("index.js")
+    if (!js) {
+      return c.text("JavaScript file not found", 404)
+    }
+    c.header('Content-Type', 'application/javascript')
+    c.header('Cache-Control', 'no-cache, must-revalidate')
+    c.header('Pragma', 'no-cache')
+    c.header('Expires', '0')
+    return c.text(js)
+  } catch (error) {
+    console.error("Error loading index.js:", error)
+    return c.text("Error loading JavaScript", 500)
+  }
+})
+
+app.get("/index.css", async (c) => {
+  try {
+    const css = await c.env.ASSETS.get("index.css")
+    if (!css) {
+      return c.text("CSS file not found", 404)
+    }
+    c.header('Content-Type', 'text/css')
+    c.header('Cache-Control', 'no-cache, must-revalidate')
+    c.header('Pragma', 'no-cache')
+    c.header('Expires', '0')
+    return c.text(css)
+  } catch (error) {
+    console.error("Error loading index.css:", error)
+    return c.text("Error loading CSS", 500)
+  }
+})
+
+app.get("/logo.svg", async (c) => {
+  try {
+    const svg = await c.env.ASSETS.get("logo.svg")
+    if (!svg) {
+      return c.text("Logo not found", 404)
+    }
+    c.header('Content-Type', 'image/svg+xml')
+    return c.text(svg)
+  } catch (error) {
+    console.error("Error loading logo.svg:", error)
+    return c.text("Error loading logo", 500)
+  }
+})
+
+app.get("/og.svg", async (c) => {
+  try {
+    const svg = await c.env.ASSETS.get("og.svg")
+    if (!svg) {
+      return c.text("OG image not found", 404)
+    }
+    c.header('Content-Type', 'image/svg+xml')
+    return c.text(svg)
+  } catch (error) {
+    console.error("Error loading og.svg:", error)
+    return c.text("Error loading OG image", 500)
+  }
+})
+
+app.get("/favicon.ico", async (c) => {
+  try {
+    const favicon = await c.env.ASSETS.get("favicon.ico")
+    if (!favicon) {
+      return c.text("Favicon not found", 404)
+    }
+    c.header('Content-Type', 'image/x-icon')
+    return c.text(favicon)
+  } catch (error) {
+    console.error("Error loading favicon.ico:", error)
+    return c.text("Error loading favicon", 500)
+  }
+})
+
 // 管理后台主页
 admin.get("/", async (c) => {
   const adminHtml = `<!DOCTYPE html>
@@ -481,6 +558,11 @@ admin.get("/", async (c) => {
         // 加载域名列表
         async function loadDomains() {
             const container = document.getElementById('domain-list');
+            if (!container) {
+                console.error('找不到 domain-list 容器');
+                return;
+            }
+            
             try {
                 console.log('开始加载域名列表，API Key:', apiKey);
                 const response = await fetch('/api/custom-domains', {
@@ -836,7 +918,16 @@ app.post("/api/custom-domains", async (c) => {
     const result = await addCustomDomain(c.env, domain)
 
     if (result) {
-      return c.json({ message: "Domain added successfully", domain, result })
+      const message = result.isUpdate 
+        ? `域名 ${domain} 已存在，已更新其配置` 
+        : `域名 ${domain} 添加成功`
+        
+      return c.json({ 
+        message, 
+        domain, 
+        result,
+        isUpdate: result.isUpdate 
+      })
     } else {
       return c.json({ error: "Failed to add domain or resolve IP" }, 500)
     }
@@ -873,9 +964,10 @@ app.post("/api/custom-domains/batch", async (c) => {
       }
 
       try {
-        const success = await addCustomDomain(c.env, domain, description)
-        if (success) {
-          results.push({ domain, status: "success" })
+        const result = await addCustomDomain(c.env, domain)
+        if (result) {
+          const status = result.isUpdate ? "updated" : "success"
+          results.push({ domain, status })
         } else {
           errors.push({ domain, error: "Failed to add domain" })
         }
@@ -1208,6 +1300,20 @@ app.delete("/api/cache", async (c) => {
 
 // 管理后台路由
 app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
+
+// 动态后台路由 - 支持任意路径作为管理后台
+app.get("/:adminPath", async (c) => {
+  const adminPath = c.req.param("adminPath")
+  
+  // 排除一些特殊路径，避免冲突
+  const excludedPaths = ['hosts', 'hosts.json', 'api', 'favicon.ico', 'robots.txt', 'sitemap.xml']
+  if (excludedPaths.includes(adminPath)) {
+    return c.notFound()
+  }
+  
+  // 返回管理后台页面
+  return admin.fetch(new Request(c.req.url.replace(`/${adminPath}`, '/')), c.env)
+})
 
 // 通用路由处理
 app.get("*", async (c) => {
