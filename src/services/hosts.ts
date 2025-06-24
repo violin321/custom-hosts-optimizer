@@ -469,9 +469,14 @@ export async function removeCustomDomain(env: Bindings, domain: string): Promise
 export async function fetchCustomDomainsData(env: Bindings): Promise<HostEntry[]> {
   try {
     const customDomains = await getCustomDomains(env)
+    console.log(`Raw custom domains from storage: ${customDomains?.length || 0}`)
+    
     const customEntries: HostEntry[] = customDomains
       .filter(cd => cd.isActive !== false)
-      .map(cd => [cd.ip, cd.domain])
+      .map(cd => {
+        console.log(`Processing custom domain: ${cd.domain} -> ${cd.ip} (active: ${cd.isActive !== false})`)
+        return [cd.ip, cd.domain]
+      })
     
     console.log(`Found ${customEntries.length} active custom domains`)
     return customEntries
@@ -493,6 +498,9 @@ export async function getCompleteHostsData(env: Bindings, forceRefresh: boolean 
     // 获取自定义域名数据（自定义域名通常数量少，可以每次获取）
     const customEntries = await fetchCustomDomainsData(env)
     console.log(`Custom entries: ${customEntries.length}`)
+    if (customEntries.length > 0) {
+      console.log('Custom domains sample:', customEntries.slice(0, 3).map(([ip, domain]) => `${domain} -> ${ip}`))
+    }
     
     // 合并数据，避免重复域名（自定义域名优先）
     const domainMap = new Map<string, string>()
@@ -505,6 +513,7 @@ export async function getCompleteHostsData(env: Bindings, forceRefresh: boolean 
     // 自定义域名覆盖同名的 GitHub 域名
     for (const [ip, domain] of customEntries) {
       domainMap.set(domain, ip)
+      console.log(`Added custom domain to map: ${domain} -> ${ip}`)
     }
     
     const allEntries: HostEntry[] = Array.from(domainMap.entries()).map(([domain, ip]) => [ip, domain])

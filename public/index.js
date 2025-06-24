@@ -183,14 +183,16 @@ async function loadHosts(forceRefresh = false) {
     const custom = true
     
     const params = new URLSearchParams()
-    if (!optimize) params.append('optimize', 'false')
-    if (!custom) params.append('custom', 'false')
+    // 明确传递参数，确保自定义域名功能启用
+    params.append('optimize', optimize.toString())
+    params.append('custom', custom.toString())
     if (forceRefresh) params.append('refresh', 'true')
     
     const queryString = params.toString()
-    const url = queryString ? `${baseUrl}/hosts?${queryString}` : `${baseUrl}/hosts`
+    const url = `${baseUrl}/hosts?${queryString}`
     
     console.log('发起 API 请求:', url)
+    console.log('请求参数:', { optimize, custom, forceRefresh })
     const response = await fetch(url)
     
     if (!response.ok) {
@@ -199,7 +201,11 @@ async function loadHosts(forceRefresh = false) {
     
     const hostsContent = await response.text()
     console.log(`成功获取hosts数据，长度: ${hostsContent.length}`)
-    console.log('Hosts内容预览:', hostsContent.substring(0, 200) + '...')
+    console.log('Hosts内容预览:', hostsContent.substring(0, 500) + '...')
+    
+    // 检查是否包含自定义域名的特征
+    const customDomainCount = (hostsContent.match(/# Custom Domains|自定义域名/gi) || []).length
+    console.log(`Hosts文件中自定义域名标记数量: ${customDomainCount}`)
     
     // 检查内容是否有效
     if (!hostsContent || hostsContent.length < 100) {
@@ -394,14 +400,18 @@ async function optimizeAllDomains() {
       
       // 清除前端缓存并立即重新加载hosts内容
       console.log('全域名优选完成，清除前端缓存并重新加载hosts')
+      console.log('优选结果:', result)
       cachedHostsContent = null
       lastHostsUpdate = null
       localStorage.removeItem('hosts_cache')
       localStorage.removeItem('hosts_cache_timestamp')
       
-      // 立即重新加载hosts内容（不需要延迟，因为后端已经完成了所有更新）
-      updateHostsStatus('正在更新显示内容...', 'updating')
-      loadHosts(true) // 强制刷新hosts内容
+      // 短暂延迟后重新加载，确保后端数据已同步
+      setTimeout(() => {
+        console.log('开始重新加载hosts内容（包含自定义域名）')
+        updateHostsStatus('正在更新显示内容...', 'updating')
+        loadHosts(true) // 强制刷新hosts内容
+      }, 1000) // 延迟1秒确保后端数据同步
       
     } else {
       showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')

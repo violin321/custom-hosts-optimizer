@@ -1053,8 +1053,8 @@ app.post("/api/optimize-all", async (c) => {
           const newIp = await fetchIPFromMultipleDNS(domain)
           
           if (newIp) {
-            // 更新域名信息
-            const updateResult = await addCustomDomain(c.env, domain)
+            // 更新域名信息，传递新解析的IP
+            const updateResult = await addCustomDomain(c.env, domain, newIp)
             
             if (updateResult) {
               customResults.push({
