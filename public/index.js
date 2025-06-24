@@ -77,9 +77,11 @@ function restoreCache() {
       if (now - cacheTime < HOSTS_CACHE_DURATION) {
         cachedHostsContent = cached
         lastHostsUpdate = cacheTime
+        console.log('从 localStorage 恢复缓存，剩余时间:', Math.round((HOSTS_CACHE_DURATION - (now - cacheTime)) / 60000), '分钟')
         return true
       } else {
         // 清除过期缓存
+        console.log('localStorage 缓存已过期，清除缓存')
         localStorage.removeItem('hosts_cache')
         localStorage.removeItem('hosts_cache_timestamp')
       }
@@ -88,6 +90,21 @@ function restoreCache() {
     console.warn('恢复缓存失败:', error)
   }
   return false
+}
+
+// 强制清除所有缓存
+function forceClearCache() {
+  console.log('强制清除所有缓存')
+  cachedHostsContent = null
+  lastHostsUpdate = null
+  localStorage.removeItem('hosts_cache')
+  localStorage.removeItem('hosts_cache_timestamp')
+  
+  // 清除定时器
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer)
+    autoRefreshTimer = null
+  }
 }
 
 // 保存缓存到 localStorage
@@ -171,12 +188,8 @@ async function loadHosts(forceRefresh = false) {
     // 显示更新状态
     updateHostsStatus('正在更新 hosts 数据...', 'updating')
     
-    // 如果有缓存内容，先显示缓存，然后在后台更新
-    if (cachedHostsContent && !forceRefresh) {
-      hostsElement.textContent = cachedHostsContent
-    } else {
-      hostsElement.textContent = "正在加载 hosts 内容..."
-    }
+    // 始终显示加载状态，避免缓存内容干扰用户体验
+    hostsElement.textContent = "正在加载 hosts 内容..."
     
     // 默认启用 IP 优选和自定义域名功能
     const optimize = true
@@ -193,7 +206,17 @@ async function loadHosts(forceRefresh = false) {
     
     console.log('发起 API 请求:', url)
     console.log('请求参数:', { optimize, custom, forceRefresh })
-    const response = await fetch(url)
+    
+    // 添加防缓存头，确保获取最新数据
+    const fetchOptions = {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    }
+    
+    const response = await fetch(url, fetchOptions)
     
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -401,17 +424,31 @@ async function optimizeAllDomains() {
       // 清除前端缓存并立即重新加载hosts内容
       console.log('全域名优选完成，清除前端缓存并重新加载hosts')
       console.log('优选结果:', result)
+      
+      // 彻底清除所有缓存
       cachedHostsContent = null
       lastHostsUpdate = null
       localStorage.removeItem('hosts_cache')
       localStorage.removeItem('hosts_cache_timestamp')
       
+      // 清除自动刷新定时器
+      if (autoRefreshTimer) {
+        clearTimeout(autoRefreshTimer)
+        autoRefreshTimer = null
+      }
+      
+      // 立即更新显示，然后延迟重新加载确保数据同步
+      updateHostsStatus('正在更新显示内容...', 'updating')
+      const hostsElement = document.getElementById("hosts")
+      if (hostsElement) {
+        hostsElement.textContent = "正在加载最新 hosts 内容..."
+      }
+      
       // 短暂延迟后重新加载，确保后端数据已同步
       setTimeout(() => {
         console.log('开始重新加载hosts内容（包含自定义域名）')
-        updateHostsStatus('正在更新显示内容...', 'updating')
         loadHosts(true) // 强制刷新hosts内容
-      }, 1000) // 延迟1秒确保后端数据同步
+      }, 2000) // 延迟2秒确保后端数据同步
       
     } else {
       showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')
@@ -592,10 +629,24 @@ function init() {
   const hasCachedData = restoreCache()
   console.log('缓存恢复状态:', hasCachedData)
   
+  // 检查 URL 参数，是否需要强制刷新
+  const urlParams = new URLSearchParams(window.location.search)
+  const forceRefreshParam = urlParams.get('refresh') === 'true'
+  
+  if (forceRefreshParam) {
+    console.log('检测到 URL 参数要求强制刷新，清除所有缓存')
+    forceClearCache()
+  }
+  
   // 加载初始内容
   if (currentTab === 'hosts') {
     console.log('当前标签页是 hosts，开始加载内容')
-    if (hasCachedData) {
+    
+    // 如果有强制刷新参数或缓存已清除，直接加载新数据
+    if (forceRefreshParam || !hasCachedData) {
+      console.log('强制刷新或无缓存，直接加载新数据')
+      loadHosts(true)
+    } else if (hasCachedData) {
       // 如果有缓存，先显示缓存内容
       if (hostsElement && cachedHostsContent) {
         hostsElement.textContent = cachedHostsContent
@@ -659,3 +710,35 @@ document.addEventListener('visibilitychange', () => {
 setInterval(() => {
   checkServiceStatus()
 }, 60 * 1000) // 每分钟检查一次
+
+// 调试功能：手动清除缓存并重新加载
+window.debugClearCache = function() {
+  console.log('=== 调试：手动清除缓存并重新加载 ===')
+  forceClearCache()
+  if (currentTab === 'hosts') {
+    loadHosts(true)
+  }
+  console.log('缓存已清除，正在重新加载...')
+}
+
+// 调试功能：显示当前缓存状态
+window.debugCacheStatus = function() {
+  console.log('=== 当前缓存状态 ===')
+  console.log('cachedHostsContent 长度:', cachedHostsContent ? cachedHostsContent.length : 'null')
+  console.log('lastHostsUpdate:', lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : 'null')
+  console.log('localStorage hosts_cache 长度:', localStorage.getItem('hosts_cache')?.length || 'null')
+  console.log('localStorage hosts_cache_timestamp:', localStorage.getItem('hosts_cache_timestamp') || 'null')
+  
+  if (lastHostsUpdate) {
+    const now = Date.now()
+    const cacheAge = Math.round((now - lastHostsUpdate) / 60000)
+    const timeLeft = Math.round((HOSTS_CACHE_DURATION - (now - lastHostsUpdate)) / 60000)
+    console.log('缓存年龄:', cacheAge, '分钟')
+    console.log('缓存剩余时间:', timeLeft, '分钟')
+    console.log('缓存是否过期:', now - lastHostsUpdate >= HOSTS_CACHE_DURATION)
+  }
+}
+
+console.log('调试功能已加载:')
+console.log('- debugClearCache(): 清除缓存并重新加载')
+console.log('- debugCacheStatus(): 查看缓存状态')
