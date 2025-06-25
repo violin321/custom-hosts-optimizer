@@ -1024,83 +1024,139 @@ app.post("/api/optimize/:domain", async (c) => {
 
 // 全域名优选 API - 用于主页立即刷新功能
 app.post("/api/optimize-all", async (c) => {
+  const startTime = Date.now()
+  const requestId = Math.random().toString(36).substring(2, 15)
+
   try {
-    console.log("开始执行全域名优选...")
-    
+    console.log(`=== 开始执行全域名优选 [${requestId}] ===`)
+    console.log(`请求时间: ${new Date().toISOString()}`)
+    console.log(`请求来源: ${c.req.header('user-agent') || 'Unknown'}`)
+    console.log(`API Key: ${c.req.header('x-api-key') || 'None'}`)
+    console.log(`请求IP: ${c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'Unknown'}`)
+
     // 第一步：重新获取最新的GitHub域名数据（这会触发所有GitHub域名的重新解析）
-    console.log("正在重新解析GitHub域名...")
-    const githubEntries = await fetchLatestHostsData()
-    await storeData(c.env, githubEntries)
-    console.log(`GitHub域名优选完成: ${githubEntries.length} 个域名`)
-    
+    console.log(`[${requestId}] 第一步：开始重新解析GitHub域名...`)
+    const githubStartTime = Date.now()
+    let githubDuration = 0
+
+    let githubEntries = []
+    try {
+      githubEntries = await fetchLatestHostsData()
+      await storeData(c.env, githubEntries)
+      githubDuration = Date.now() - githubStartTime
+      console.log(`[${requestId}] GitHub域名优选完成: ${githubEntries.length} 个域名，耗时: ${githubDuration}ms`)
+    } catch (githubError) {
+      githubDuration = Date.now() - githubStartTime
+      console.error(`[${requestId}] GitHub域名优选失败 (耗时: ${githubDuration}ms):`, githubError)
+      // GitHub域名优选失败不应该阻止自定义域名优选
+      console.log(`[${requestId}] GitHub域名优选失败，但继续处理自定义域名`)
+    }
+
     // 第二步：优选所有自定义域名
+    console.log(`[${requestId}] 第二步：开始优选自定义域名...`)
+    const customStartTime = Date.now()
+
     const customDomains = await getCustomDomains(c.env)
+    console.log(`[${requestId}] 获取到 ${customDomains?.length || 0} 个自定义域名`)
+
     const customResults = []
     const customErrors = []
     let customSuccessCount = 0
-    
+
     if (Array.isArray(customDomains) && customDomains.length > 0) {
-      console.log(`找到 ${customDomains.length} 个自定义域名，开始优选...`)
-      
+      console.log(`[${requestId}] 找到 ${customDomains.length} 个自定义域名，开始逐个优选...`)
+
       // 为每个自定义域名执行优选
-      for (const domainData of customDomains) {
+      for (let i = 0; i < customDomains.length; i++) {
+        const domainData = customDomains[i]
         const domain = domainData.domain
-        
+        const domainStartTime = Date.now()
+
         try {
-          console.log(`正在优选自定义域名: ${domain}`)
-          
+          console.log(`[${requestId}] 正在优选自定义域名 ${i + 1}/${customDomains.length}: ${domain}`)
+          console.log(`[${requestId}] 当前IP: ${domainData.ip}`)
+
           // 重新解析域名获取新的 IP
           const newIp = await fetchIPFromMultipleDNS(domain)
-          
+          const domainDuration = Date.now() - domainStartTime
+
           if (newIp) {
+            console.log(`[${requestId}] 域名 ${domain} DNS解析成功: ${newIp} (耗时: ${domainDuration}ms)`)
+
             // 更新域名信息，传递新解析的IP
             const updateResult = await addCustomDomain(c.env, domain, newIp)
-            
+
             if (updateResult) {
+              const ipChanged = domainData.ip !== newIp
               customResults.push({
                 domain,
                 status: "success",
                 oldIp: domainData.ip,
                 newIp: newIp,
-                updated: domainData.ip !== newIp
+                updated: ipChanged,
+                duration: domainDuration
               })
               customSuccessCount++
-              console.log(`自定义域名 ${domain} 优选成功: ${newIp}`)
+              console.log(`[${requestId}] 自定义域名 ${domain} 优选成功: ${domainData.ip} -> ${newIp} ${ipChanged ? '(IP已更新)' : '(IP未变化)'}`)
             } else {
               customErrors.push({
                 domain,
-                error: "更新失败"
+                error: "更新失败",
+                oldIp: domainData.ip,
+                newIp: newIp,
+                duration: domainDuration
               })
-              console.log(`自定义域名 ${domain} 更新失败`)
+              console.error(`[${requestId}] 自定义域名 ${domain} 更新失败，DNS解析成功但存储失败`)
             }
           } else {
             customErrors.push({
               domain,
-              error: "DNS解析失败"
+              error: "DNS解析失败",
+              oldIp: domainData.ip,
+              duration: domainDuration
             })
-            console.log(`自定义域名 ${domain} DNS解析失败`)
+            console.error(`[${requestId}] 自定义域名 ${domain} DNS解析失败 (耗时: ${domainDuration}ms)`)
           }
         } catch (error) {
+          const domainDuration = Date.now() - domainStartTime
+          const errorMessage = error instanceof Error ? error.message : "未知错误"
           customErrors.push({
             domain,
-            error: error instanceof Error ? error.message : "未知错误"
+            error: errorMessage,
+            oldIp: domainData.ip,
+            duration: domainDuration
           })
-          console.error(`自定义域名 ${domain} 优选失败:`, error)
+          console.error(`[${requestId}] 自定义域名 ${domain} 优选异常 (耗时: ${domainDuration}ms):`, error)
         }
       }
+
+      const customTotalDuration = Date.now() - customStartTime
+      console.log(`[${requestId}] 自定义域名优选完成，总耗时: ${customTotalDuration}ms`)
     } else {
-      console.log("没有找到自定义域名")
+      console.log(`[${requestId}] 没有找到自定义域名`)
     }
-    
+
     const totalOptimized = githubEntries.length + customSuccessCount
     const totalFailed = customErrors.length
-    
-    console.log(`全域名优选完成: GitHub ${githubEntries.length} 个，自定义成功 ${customSuccessCount} 个，自定义失败 ${customErrors.length} 个`)
-    
-    return c.json({
+    const totalDuration = Date.now() - startTime
+
+    console.log(`[${requestId}] === 全域名优选完成 ===`)
+    console.log(`[${requestId}] 总耗时: ${totalDuration}ms`)
+    console.log(`[${requestId}] GitHub域名: ${githubEntries.length} 个`)
+    console.log(`[${requestId}] 自定义域名成功: ${customSuccessCount} 个`)
+    console.log(`[${requestId}] 自定义域名失败: ${customErrors.length} 个`)
+    console.log(`[${requestId}] 总优选成功: ${totalOptimized} 个`)
+    console.log(`[${requestId}] 总失败: ${totalFailed} 个`)
+
+    // 构建详细的响应
+    const response = {
+      success: true,
+      requestId,
       message: `全域名优选完成: GitHub域名 ${githubEntries.length} 个，自定义域名成功 ${customSuccessCount} 个，失败 ${customErrors.length} 个`,
       optimized: totalOptimized,
       failed: totalFailed,
+      duration: totalDuration,
+      timestamp: new Date().toISOString(),
       githubDomains: githubEntries.length,
       customDomains: {
         total: customDomains?.length || 0,
@@ -1108,13 +1164,44 @@ app.post("/api/optimize-all", async (c) => {
         failed: customErrors.length
       },
       results: customResults,
-      errors: customErrors
-    })
+      errors: customErrors,
+      performance: {
+        totalDuration,
+        githubDuration: githubDuration || 0,
+        customDuration: customStartTime ? Date.now() - customStartTime : 0
+      }
+    }
+
+    console.log(`[${requestId}] 返回成功响应`)
+    return c.json(response)
+
   } catch (error) {
-    console.error("全域名优选失败:", error)
-    return c.json({
-      error: "全域名优选失败: " + (error instanceof Error ? error.message : String(error))
-    }, 500)
+    const totalDuration = Date.now() - startTime
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    console.error(`[${requestId}] === 全域名优选失败 ===`)
+    console.error(`[${requestId}] 错误时间: ${new Date().toISOString()}`)
+    console.error(`[${requestId}] 执行时长: ${totalDuration}ms`)
+    console.error(`[${requestId}] 错误类型: ${error instanceof Error ? error.constructor.name : typeof error}`)
+    console.error(`[${requestId}] 错误消息: ${errorMessage}`)
+    console.error(`[${requestId}] 错误堆栈:`, error instanceof Error ? error.stack : 'No stack trace')
+
+    // 构建详细的错误响应
+    const errorResponse = {
+      success: false,
+      requestId,
+      error: "全域名优选失败: " + errorMessage,
+      errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
+      duration: totalDuration,
+      timestamp: new Date().toISOString(),
+      details: {
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
+      }
+    }
+
+    console.error(`[${requestId}] 返回错误响应:`, errorResponse)
+    return c.json(errorResponse, 500)
   }
 })
 

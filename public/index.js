@@ -384,111 +384,404 @@ function switchTab(tabName) {
   }
 }
 
+// 智能重试机制
+async function retryWithBackoff(fn, maxRetries = 2, baseDelay = 1000) {
+  let lastError
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`尝试第 ${attempt + 1} 次 (共 ${maxRetries + 1} 次)`)
+      return await fn()
+    } catch (error) {
+      lastError = error
+      console.error(`第 ${attempt + 1} 次尝试失败:`, error.message)
+
+      // 如果是最后一次尝试，直接抛出错误
+      if (attempt === maxRetries) {
+        console.error('所有重试尝试都失败了')
+        throw lastError
+      }
+
+      // 计算延迟时间（指数退避）
+      const delay = baseDelay * Math.pow(2, attempt)
+      console.log(`等待 ${delay}ms 后重试...`)
+
+      // 显示重试信息给用户
+      showMessage(`第 ${attempt + 1} 次尝试失败，${delay/1000}秒后重试...`, 'info')
+
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+}
+
+// 检查网络连接状态
+async function checkNetworkConnection() {
+  try {
+    // 尝试访问一个简单的端点来检查连接
+    const response = await fetch(`${baseUrl}/hosts.json`, {
+      method: 'GET',
+      cache: 'no-cache',
+      signal: AbortSignal.timeout(5000)
+    })
+    return response.ok
+  } catch (error) {
+    console.warn('网络连接检查失败:', error)
+    return false
+  }
+}
+
+// 智能缓存清理和数据同步
+async function performIntelligentCacheRefresh(optimizeResult) {
+  console.log('=== 开始智能缓存清理和数据同步 ===')
+  console.log('优选结果:', optimizeResult)
+
+  // 记录清理前的状态
+  const beforeState = {
+    cachedContentLength: cachedHostsContent?.length || 0,
+    lastUpdate: lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : 'null',
+    localStorageSize: localStorage.getItem('hosts_cache')?.length || 0,
+    hasAutoRefreshTimer: !!autoRefreshTimer
+  }
+  console.log('清理前状态:', beforeState)
+
+  // 第一步：彻底清除所有缓存
+  console.log('第一步：清除所有缓存...')
+  cachedHostsContent = null
+  lastHostsUpdate = null
+  localStorage.removeItem('hosts_cache')
+  localStorage.removeItem('hosts_cache_timestamp')
+
+  // 清除定时器
+  if (autoRefreshTimer) {
+    clearTimeout(autoRefreshTimer)
+    autoRefreshTimer = null
+    console.log('已清除自动刷新定时器')
+  }
+
+  if (countdownTimerInterval) {
+    clearInterval(countdownTimerInterval)
+    countdownTimerInterval = null
+    console.log('已清除倒计时定时器')
+  }
+
+  console.log('缓存清除完成')
+
+  // 第二步：更新UI状态
+  console.log('第二步：更新UI状态...')
+  updateHostsStatus('正在同步最新数据...', 'updating')
+
+  const hostsElement = document.getElementById("hosts")
+  if (hostsElement) {
+    hostsElement.textContent = "正在同步最新 hosts 内容，请稍候..."
+    console.log('已更新hosts元素显示状态')
+  }
+
+  // 第三步：验证后端数据是否已更新
+  console.log('第三步：验证后端数据同步状态...')
+
+  try {
+    // 等待一小段时间确保后端数据已写入
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    // 检查后端数据状态
+    const statusResponse = await fetch(`${baseUrl}/hosts.json?refresh=true&_t=${Date.now()}`, {
+      method: 'GET',
+      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    })
+
+    if (statusResponse.ok) {
+      const statusData = await statusResponse.json()
+      console.log('后端数据状态检查成功:', {
+        total: statusData.total,
+        github: statusData.github?.length || 0,
+        custom: statusData.custom?.length || 0,
+        timestamp: statusData.timestamp
+      })
+
+      // 第四步：重新加载hosts内容
+      console.log('第四步：重新加载hosts内容...')
+
+      // 使用较短的延迟，因为我们已经验证了数据状态
+      setTimeout(async () => {
+        console.log('=== 开始重新加载hosts内容（强制刷新） ===')
+
+        try {
+          await loadHosts(true) // 强制刷新hosts内容
+          console.log('hosts内容重新加载完成')
+
+          // 重新设置定时器
+          setupCountdownTimer()
+          console.log('已重新设置倒计时定时器')
+
+        } catch (loadError) {
+          console.error('重新加载hosts内容失败:', loadError)
+          showMessage('数据同步完成，但显示更新失败，请手动刷新页面', 'error')
+        }
+      }, 500) // 减少到500ms
+
+    } else {
+      console.warn('后端数据状态检查失败，使用默认延迟重新加载')
+      // 如果状态检查失败，使用较长的延迟
+      setTimeout(() => {
+        console.log('=== 开始重新加载hosts内容（默认延迟） ===')
+        loadHosts(true)
+      }, 2000)
+    }
+
+  } catch (error) {
+    console.error('数据同步验证失败:', error)
+    // 如果验证失败，使用默认策略
+    setTimeout(() => {
+      console.log('=== 开始重新加载hosts内容（错误恢复） ===')
+      loadHosts(true)
+    }, 3000)
+  }
+}
+
 // 全域名优选函数 - 主页立即刷新功能
 async function optimizeAllDomains() {
-  console.log('开始执行全域名优选...')
-  
+  debugLog('info', '开始执行全域名优选')
+  console.log('=== 开始执行全域名优选 ===')
+  console.log('时间戳:', new Date().toISOString())
+  console.log('当前页面URL:', window.location.href)
+  console.log('baseUrl:', baseUrl)
+
   const refreshBtn = document.getElementById('refreshHosts')
   const originalText = refreshBtn ? refreshBtn.textContent : '立即全域名优选'
-  
+
   console.log('刷新按钮状态:', refreshBtn ? '找到' : '未找到')
-  
+  console.log('按钮原始文本:', originalText)
+
+  // 记录开始时间用于性能监控
+  const startTime = Date.now()
+  let requestSent = false
+  let responseReceived = false
+
   try {
     // 更新按钮状态
     if (refreshBtn) {
       refreshBtn.textContent = '正在优选...'
       refreshBtn.disabled = true
+      refreshBtn.style.opacity = '0.6'
+      console.log('按钮状态已更新为禁用状态')
     }
-    
+
     updateHostsStatus('正在执行全域名优选，请稍候...', 'updating')
     showMessage('开始执行全域名优选（包括GitHub域名和自定义域名），这可能需要1-2分钟时间...', 'info')
-    
-    // 调用全域名优选API
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2分钟超时
-    
-    const response = await fetch(`${baseUrl}/api/optimize-all`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': 'main-page-refresh'
-      },
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-    
+
+    // 构建请求URL和参数
+    const apiUrl = `${baseUrl}/api/optimize-all`
+    const requestHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': 'main-page-refresh',
+      'User-Agent': 'CustomHosts-Frontend/1.0',
+      'Accept': 'application/json'
+    }
+
+    console.log('准备发送API请求:')
+    console.log('- URL:', apiUrl)
+    console.log('- Headers:', requestHeaders)
+    console.log('- Method: POST')
+
+    // 检查网络连接
+    console.log('检查网络连接状态...')
+    const isNetworkOk = await checkNetworkConnection()
+    if (!isNetworkOk) {
+      console.warn('网络连接检查失败，但继续尝试API请求')
+      showMessage('网络连接可能不稳定，正在尝试连接...', 'info')
+    }
+
+    // 使用重试机制调用全域名优选API
+    const response = await retryWithBackoff(async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        console.error('单次请求超时，正在中止请求...')
+        controller.abort()
+      }, 120000) // 单次请求2分钟超时
+
+      try {
+        console.log('发送API请求...')
+        requestSent = true
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: requestHeaders,
+          signal: controller.signal,
+          // 添加请求配置
+          cache: 'no-cache',
+          credentials: 'same-origin'
+        })
+
+        clearTimeout(timeoutId)
+        responseReceived = true
+
+        return response
+      } catch (error) {
+        clearTimeout(timeoutId)
+        throw error
+      }
+    }, 2, 2000) // 最多重试2次，基础延迟2秒
+
+    console.log('收到API响应:')
+    console.log('- 状态码:', response.status)
+    console.log('- 状态文本:', response.statusText)
+    console.log('- 响应头:', Object.fromEntries(response.headers.entries()))
+    console.log('- 响应时间:', Date.now() - startTime, 'ms')
+
+    // 检查响应状态
+    if (!response.ok) {
+      console.error('API响应错误:', response.status, response.statusText)
+
+      // 尝试解析错误响应
+      let errorData
+      try {
+        errorData = await response.json()
+        console.error('错误响应内容:', errorData)
+      } catch (parseError) {
+        console.error('无法解析错误响应:', parseError)
+        const errorText = await response.text()
+        console.error('错误响应文本:', errorText)
+        errorData = { error: `HTTP ${response.status}: ${response.statusText}`, details: errorText }
+      }
+
+      throw new Error(`API请求失败: ${response.status} ${response.statusText}${errorData?.error ? ' - ' + errorData.error : ''}`)
+    }
+
     const result = await response.json()
-    
-    if (response.ok) {
-      const githubCount = result.githubDomains || 0
-      const customTotal = result.customDomains?.total || 0
-      const customOptimized = result.customDomains?.optimized || 0
-      const customFailed = result.customDomains?.failed || 0
-      
-      let message = `全域名优选完成！`
-      if (githubCount > 0) {
-        message += ` GitHub域名 ${githubCount} 个`
-      }
-      if (customTotal > 0) {
-        message += `，自定义域名: 成功 ${customOptimized} 个`
-        if (customFailed > 0) {
-          message += `，失败 ${customFailed} 个`
-        }
-      }
-      
-      showMessage(message, 'success')
-      
-      // 清除前端缓存并立即重新加载hosts内容
-      console.log('全域名优选完成，清除前端缓存并重新加载hosts')
-      console.log('优选结果:', result)
-      
-      // 彻底清除所有缓存
-      cachedHostsContent = null
-      lastHostsUpdate = null
-      localStorage.removeItem('hosts_cache')
-      localStorage.removeItem('hosts_cache_timestamp')
-      
-      // 清除自动刷新定时器
-      if (autoRefreshTimer) {
-        clearTimeout(autoRefreshTimer)
-        autoRefreshTimer = null
-      }
-      
-      // 立即更新显示，然后延迟重新加载确保数据同步
-      updateHostsStatus('正在更新显示内容...', 'updating')
-      const hostsElement = document.getElementById("hosts")
-      if (hostsElement) {
-        hostsElement.textContent = "正在加载最新 hosts 内容..."
-      }
-      
-      // 短暂延迟后重新加载，确保后端数据已同步
-      setTimeout(() => {
-        console.log('开始重新加载hosts内容（包含自定义域名）')
-        loadHosts(true) // 强制刷新hosts内容
-      }, 3000) // 延迟3秒确保后端数据同步
-      
-    } else {
-      showMessage(`全域名优选失败: ${result.error || '未知错误'}`, 'error')
-      updateHostsStatus('全域名优选失败', 'error')
+    console.log('API响应解析成功:', result)
+
+    // 处理成功响应
+    const githubCount = result.githubDomains || 0
+    const customTotal = result.customDomains?.total || 0
+    const customOptimized = result.customDomains?.optimized || 0
+    const customFailed = result.customDomains?.failed || 0
+    const totalOptimized = result.optimized || (githubCount + customOptimized)
+    const totalFailed = result.failed || customFailed
+
+    console.log('优选结果统计:')
+    console.log('- GitHub域名:', githubCount)
+    console.log('- 自定义域名总数:', customTotal)
+    console.log('- 自定义域名成功:', customOptimized)
+    console.log('- 自定义域名失败:', customFailed)
+    console.log('- 总优选成功:', totalOptimized)
+    console.log('- 总失败:', totalFailed)
+    console.log('- 完整结果对象:', result)
+
+    // 构建成功消息
+    let message = `全域名优选完成！`
+    const details = []
+
+    if (githubCount > 0) {
+      details.push(`GitHub域名 ${githubCount} 个`)
     }
-    
+    if (customTotal > 0) {
+      details.push(`自定义域名: 成功 ${customOptimized} 个${customFailed > 0 ? `，失败 ${customFailed} 个` : ''}`)
+    }
+
+    if (details.length > 0) {
+      message += ` ${details.join('，')}`
+    }
+
+    console.log('显示成功消息:', message)
+    showMessage(message, 'success')
+
+    // 更新状态监控
+    statusMonitor.updateOptimizeStatus(true, Date.now() - startTime)
+    debugLog('info', '全域名优选成功', {
+      githubCount,
+      customTotal,
+      customOptimized,
+      customFailed,
+      totalOptimized,
+      duration: Date.now() - startTime
+    })
+
+    // 智能缓存清理和数据同步
+    await performIntelligentCacheRefresh(result)
+
   } catch (error) {
-    console.error('全域名优选失败:', error)
-    
+    const errorTime = Date.now() - startTime
+    console.error('=== 全域名优选失败 ===')
+    console.error('错误时间:', new Date().toISOString())
+    console.error('执行时长:', errorTime, 'ms')
+    console.error('请求已发送:', requestSent)
+    console.error('响应已接收:', responseReceived)
+    console.error('错误对象:', error)
+    console.error('错误名称:', error.name)
+    console.error('错误消息:', error.message)
+    console.error('错误堆栈:', error.stack)
+
+    let errorMessage = '全域名优选失败'
+    let statusMessage = '优选失败'
+
+    // 根据错误类型提供具体的错误信息
     if (error.name === 'AbortError') {
-      showMessage('全域名优选超时，请稍后重试', 'error')
-      updateHostsStatus('优选超时', 'error')
+      errorMessage = '全域名优选超时，请检查网络连接后重试'
+      statusMessage = '优选超时'
+      console.error('请求被中止（超时）')
+    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      errorMessage = '网络连接失败，请检查网络状态后重试'
+      statusMessage = '网络错误'
+      console.error('网络连接错误')
+    } else if (error.message.includes('API请求失败')) {
+      errorMessage = error.message
+      statusMessage = '服务器错误'
+      console.error('API服务器错误')
     } else {
-      showMessage(`全域名优选失败: ${error.message}`, 'error')
-      updateHostsStatus('全域名优选失败', 'error')
+      errorMessage = `全域名优选失败: ${error.message}`
+      statusMessage = '未知错误'
+      console.error('未知错误类型')
     }
+
+    console.error('最终错误消息:', errorMessage)
+    showMessage(errorMessage, 'error')
+    updateHostsStatus(statusMessage, 'error')
+
+    // 更新状态监控
+    statusMonitor.updateOptimizeStatus(false, errorTime)
+    debugLog('error', '全域名优选失败', {
+      errorType: error.name,
+      errorMessage: error.message,
+      duration: errorTime,
+      requestSent,
+      responseReceived
+    })
+
+    // 如果是网络错误，提供重试建议
+    if (error.name === 'TypeError' || error.name === 'AbortError') {
+      statusMonitor.updateNetworkStatus('error')
+      setTimeout(() => {
+        showMessage('提示：如果网络不稳定，可以稍后再次点击"立即全域名优选"按钮重试', 'info')
+      }, 3000)
+    }
+
   } finally {
+    const totalTime = Date.now() - startTime
+    console.log('=== 全域名优选操作结束 ===')
+    console.log('总执行时间:', totalTime, 'ms')
+    console.log('结束时间:', new Date().toISOString())
+
     // 恢复按钮状态
     if (refreshBtn) {
       refreshBtn.textContent = originalText
       refreshBtn.disabled = false
+      refreshBtn.style.opacity = '1'
+      console.log('按钮状态已恢复:', originalText)
     }
+
+    // 确保状态最终会恢复到正常状态
+    setTimeout(() => {
+      if (document.getElementById('hostsStatus')?.textContent?.includes('失败') ||
+          document.getElementById('hostsStatus')?.textContent?.includes('错误') ||
+          document.getElementById('hostsStatus')?.textContent?.includes('超时')) {
+        console.log('检测到错误状态，恢复到缓存状态显示')
+        updateCountdown()
+      }
+    }, 10000) // 10秒后检查并恢复状态
   }
 }
 
@@ -729,10 +1022,91 @@ setInterval(() => {
   checkServiceStatus()
 }, 60 * 1000) // 每分钟检查一次
 
+// === 增强调试工具和状态监控 ===
+
+// 调试状态管理
+const debugState = {
+  logs: [],
+  maxLogs: 100,
+  isEnabled: true,
+  startTime: Date.now()
+}
+
+// 增强日志记录
+function debugLog(level, message, data = null) {
+  if (!debugState.isEnabled) return
+
+  const timestamp = new Date().toISOString()
+  const logEntry = {
+    timestamp,
+    level,
+    message,
+    data,
+    relativeTime: Date.now() - debugState.startTime
+  }
+
+  debugState.logs.push(logEntry)
+
+  // 保持日志数量在限制内
+  if (debugState.logs.length > debugState.maxLogs) {
+    debugState.logs.shift()
+  }
+
+  // 输出到控制台
+  const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'
+  console[consoleMethod](`[${level.toUpperCase()}] ${message}`, data || '')
+}
+
+// 实时状态监控
+function createStatusMonitor() {
+  const monitor = {
+    lastOptimizeTime: null,
+    optimizeCount: 0,
+    errorCount: 0,
+    networkStatus: 'unknown',
+    cacheStatus: 'unknown',
+
+    updateOptimizeStatus(success, duration = null) {
+      this.lastOptimizeTime = Date.now()
+      this.optimizeCount++
+      if (!success) this.errorCount++
+
+      debugLog('info', `优选操作${success ? '成功' : '失败'}`, {
+        count: this.optimizeCount,
+        errors: this.errorCount,
+        duration
+      })
+    },
+
+    updateNetworkStatus(status) {
+      this.networkStatus = status
+      debugLog('info', `网络状态更新: ${status}`)
+    },
+
+    updateCacheStatus(status) {
+      this.cacheStatus = status
+      debugLog('info', `缓存状态更新: ${status}`)
+    },
+
+    getStatus() {
+      return {
+        ...this,
+        uptime: Date.now() - debugState.startTime,
+        successRate: this.optimizeCount > 0 ? ((this.optimizeCount - this.errorCount) / this.optimizeCount * 100).toFixed(1) + '%' : 'N/A'
+      }
+    }
+  }
+
+  return monitor
+}
+
+const statusMonitor = createStatusMonitor()
+
 // 调试功能：手动清除缓存并重新加载
 window.debugClearCache = function() {
-  console.log('=== 调试：手动清除缓存并重新加载 ===')
+  debugLog('info', '手动清除缓存并重新加载')
   forceClearCache()
+  statusMonitor.updateCacheStatus('cleared')
   if (currentTab === 'hosts') {
     loadHosts(true)
   }
@@ -741,34 +1115,41 @@ window.debugClearCache = function() {
 
 // 调试功能：显示当前缓存状态
 window.debugCacheStatus = function() {
-  console.log('=== 当前缓存状态 ===')
-  console.log('cachedHostsContent 长度:', cachedHostsContent ? cachedHostsContent.length : 'null')
-  console.log('lastHostsUpdate:', lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : 'null')
-  console.log('localStorage hosts_cache 长度:', localStorage.getItem('hosts_cache')?.length || 'null')
-  console.log('localStorage hosts_cache_timestamp:', localStorage.getItem('hosts_cache_timestamp') || 'null')
-  
+  const status = {
+    cachedContentLength: cachedHostsContent ? cachedHostsContent.length : null,
+    lastUpdate: lastHostsUpdate ? new Date(lastHostsUpdate).toLocaleString() : null,
+    localStorageSize: localStorage.getItem('hosts_cache')?.length || null,
+    localStorageTimestamp: localStorage.getItem('hosts_cache_timestamp') || null,
+    hasAutoRefreshTimer: !!autoRefreshTimer,
+    hasCountdownTimer: !!countdownTimerInterval
+  }
+
   if (lastHostsUpdate) {
     const now = Date.now()
     const cacheAge = Math.round((now - lastHostsUpdate) / 60000)
     const timeLeft = Math.round((HOSTS_CACHE_DURATION - (now - lastHostsUpdate)) / 60000)
-    console.log('缓存年龄:', cacheAge, '分钟')
-    console.log('缓存剩余时间:', timeLeft, '分钟')
-    console.log('缓存是否过期:', now - lastHostsUpdate >= HOSTS_CACHE_DURATION)
+    status.cacheAgeMinutes = cacheAge
+    status.timeLeftMinutes = timeLeft
+    status.isExpired = now - lastHostsUpdate >= HOSTS_CACHE_DURATION
   }
+
+  console.log('=== 当前缓存状态 ===', status)
+  debugLog('info', '缓存状态查询', status)
+  return status
 }
 
 // 调试功能：测试API响应
 window.debugTestAPI = async function() {
-  console.log('=== 调试：测试API响应 ===')
-  const baseUrl = window.location.origin
+  debugLog('info', '开始API测试')
+  const testStart = Date.now()
+
   const params = new URLSearchParams()
   params.append('optimize', 'true')
   params.append('custom', 'true')
   params.append('refresh', 'true')
-  
+
   const url = `${baseUrl}/hosts?${params.toString()}&_t=${Date.now()}`
-  console.log('测试URL:', url)
-  
+
   try {
     const response = await fetch(url, {
       method: 'GET',
@@ -778,29 +1159,129 @@ window.debugTestAPI = async function() {
         'Expires': '0'
       }
     })
-    
+
+    const duration = Date.now() - testStart
+
     if (response.ok) {
       const content = await response.text()
-      console.log('API响应长度:', content.length)
-      console.log('API响应预览:', content.substring(0, 500) + '...')
-      
-      // 检查自定义域名
       const customDomainCount = (content.match(/# Custom Domains|自定义域名/gi) || []).length
-      console.log('自定义域名标记数量:', customDomainCount)
-      
-      return { success: true, length: content.length, customDomains: customDomainCount }
+
+      const result = {
+        success: true,
+        duration,
+        length: content.length,
+        customDomains: customDomainCount,
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries())
+      }
+
+      debugLog('info', 'API测试成功', result)
+      statusMonitor.updateNetworkStatus('ok')
+      return result
     } else {
-      console.error('API响应错误:', response.status, response.statusText)
-      return { success: false, error: `${response.status}: ${response.statusText}` }
+      const error = `${response.status}: ${response.statusText}`
+      debugLog('error', 'API测试失败', { error, duration })
+      statusMonitor.updateNetworkStatus('error')
+      return { success: false, error, duration }
     }
   } catch (error) {
-    console.error('API请求失败:', error)
-    return { success: false, error: error.message }
+    const duration = Date.now() - testStart
+    debugLog('error', 'API测试异常', { error: error.message, duration })
+    statusMonitor.updateNetworkStatus('error')
+    return { success: false, error: error.message, duration }
   }
 }
 
-console.log('调试功能已加载:')
+// 调试功能：测试优选API
+window.debugTestOptimizeAPI = async function() {
+  debugLog('info', '开始优选API测试')
+  const testStart = Date.now()
+
+  try {
+    const response = await fetch(`${baseUrl}/api/optimize-all`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': 'main-page-refresh'
+      }
+    })
+
+    const duration = Date.now() - testStart
+    const result = await response.json()
+
+    if (response.ok) {
+      debugLog('info', '优选API测试成功', { ...result, duration })
+      statusMonitor.updateOptimizeStatus(true, duration)
+      return { success: true, ...result, duration }
+    } else {
+      debugLog('error', '优选API测试失败', { error: result.error, duration })
+      statusMonitor.updateOptimizeStatus(false, duration)
+      return { success: false, error: result.error, duration }
+    }
+  } catch (error) {
+    const duration = Date.now() - testStart
+    debugLog('error', '优选API测试异常', { error: error.message, duration })
+    statusMonitor.updateOptimizeStatus(false, duration)
+    return { success: false, error: error.message, duration }
+  }
+}
+
+// 调试功能：获取系统状态
+window.debugSystemStatus = function() {
+  const status = {
+    monitor: statusMonitor.getStatus(),
+    cache: window.debugCacheStatus(),
+    page: {
+      currentTab,
+      baseUrl,
+      userAgent: navigator.userAgent,
+      online: navigator.onLine,
+      cookieEnabled: navigator.cookieEnabled
+    },
+    timers: {
+      autoRefreshTimer: !!autoRefreshTimer,
+      countdownTimerInterval: !!countdownTimerInterval
+    },
+    logs: debugState.logs.slice(-10) // 最近10条日志
+  }
+
+  console.log('=== 系统状态 ===', status)
+  return status
+}
+
+// 调试功能：导出日志
+window.debugExportLogs = function() {
+  const logData = {
+    exportTime: new Date().toISOString(),
+    systemStatus: window.debugSystemStatus(),
+    allLogs: debugState.logs
+  }
+
+  const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `custom-hosts-debug-${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+
+  debugLog('info', '调试日志已导出')
+}
+
+// 调试功能：清除日志
+window.debugClearLogs = function() {
+  debugState.logs = []
+  debugLog('info', '调试日志已清除')
+}
+
+console.log('=== 增强调试功能已加载 ===')
+console.log('基础功能:')
 console.log('- debugClearCache(): 清除缓存并重新加载')
 console.log('- debugCacheStatus(): 查看缓存状态')
-console.log('- debugTestAPI(): 测试API响应')
-console.log('- debugTestAPI(): 测试API响应')
+console.log('- debugTestAPI(): 测试hosts API响应')
+console.log('增强功能:')
+console.log('- debugTestOptimizeAPI(): 测试优选API')
+console.log('- debugSystemStatus(): 获取完整系统状态')
+console.log('- debugExportLogs(): 导出调试日志')
+console.log('- debugClearLogs(): 清除调试日志')
+console.log('状态监控已启用，所有操作将被记录')
