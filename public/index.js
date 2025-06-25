@@ -126,6 +126,15 @@ function updateHostsStatus(message, type = 'info') {
   }
 }
 
+// 更新缓存状态显示
+function updateCacheStatus(message, type = 'cached') {
+  const cacheStatusElement = document.getElementById('cacheStatus')
+  if (cacheStatusElement) {
+    cacheStatusElement.textContent = `缓存状态：${message}`
+    cacheStatusElement.className = `cache-status-text ${type}`
+  }
+}
+
 // 计算下次更新时间并显示倒计时
 function updateCountdown() {
   if (!lastHostsUpdate) return
@@ -177,10 +186,13 @@ async function loadHosts(forceRefresh = false) {
   // 强制刷新时跳过缓存检查
   if (forceRefresh) {
     console.log('强制刷新模式：跳过缓存检查，直接获取新数据')
-  } else if (cachedHostsContent && lastHostsUpdate && 
+    updateCacheStatus('正在获取最新数据...', 'updating')
+  } else if (cachedHostsContent && lastHostsUpdate &&
       (now - lastHostsUpdate < HOSTS_CACHE_DURATION)) {
     console.log('使用缓存数据显示hosts内容')
     hostsElement.textContent = cachedHostsContent
+    const cacheAge = Math.round((now - lastHostsUpdate) / (60 * 1000))
+    updateCacheStatus(`使用缓存数据 (${cacheAge}分钟前)`, 'cached')
     updateCountdown()
     return
   }
@@ -244,7 +256,6 @@ async function loadHosts(forceRefresh = false) {
     
     // 更新缓存和显示内容
     const isContentChanged = cachedHostsContent !== hostsContent
-    const previousContent = cachedHostsContent
     cachedHostsContent = hostsContent
     lastHostsUpdate = now
     hostsElement.textContent = hostsContent
@@ -257,6 +268,7 @@ async function loadHosts(forceRefresh = false) {
     if (forceRefresh) {
       console.log('强制刷新完成，显示更新成功状态')
       updateHostsStatus('hosts 内容已强制更新', 'success')
+      updateCacheStatus('显示最新数据', 'fresh')
       showMessage('hosts 内容已强制更新', 'success')
       setTimeout(() => {
         updateCountdown()
@@ -265,13 +277,15 @@ async function loadHosts(forceRefresh = false) {
       // 更新状态
       if (isContentChanged) {
         updateHostsStatus('hosts 内容已更新', 'success')
+        updateCacheStatus('显示最新数据', 'fresh')
         setTimeout(() => {
           updateCountdown()
         }, 3000)
       } else {
+        updateCacheStatus('显示最新数据', 'fresh')
         updateCountdown()
       }
-      
+
       // 如果是后台更新且内容有变化，显示提示
       if (isContentChanged) {
         showMessage('hosts 内容已更新', 'success')
@@ -469,6 +483,7 @@ async function performIntelligentCacheRefresh(optimizeResult) {
   // 第二步：更新UI状态
   console.log('第二步：更新UI状态...')
   updateHostsStatus('正在同步最新数据...', 'updating')
+  updateCacheStatus('正在同步优选结果...', 'updating')
 
   const hostsElement = document.getElementById("hosts")
   if (hostsElement) {
@@ -512,6 +527,7 @@ async function performIntelligentCacheRefresh(optimizeResult) {
         try {
           await loadHosts(true) // 强制刷新hosts内容
           console.log('hosts内容重新加载完成')
+          updateCacheStatus('已同步优选结果', 'fresh')
 
           // 重新设置定时器
           setupCountdownTimer()
@@ -519,6 +535,7 @@ async function performIntelligentCacheRefresh(optimizeResult) {
 
         } catch (loadError) {
           console.error('重新加载hosts内容失败:', loadError)
+          updateCacheStatus('同步失败', 'error')
           showMessage('数据同步完成，但显示更新失败，请手动刷新页面', 'error')
         }
       }, 500) // 减少到500ms
@@ -539,6 +556,62 @@ async function performIntelligentCacheRefresh(optimizeResult) {
       console.log('=== 开始重新加载hosts内容（错误恢复） ===')
       loadHosts(true)
     }, 3000)
+  }
+}
+
+// 强制刷新hosts显示函数 - 简单快速刷新
+async function forceRefreshHostsDisplay() {
+  console.log('=== 开始强制刷新hosts显示 ===')
+
+  const forceRefreshBtn = document.getElementById('forceRefreshDisplay')
+  const originalText = forceRefreshBtn ? forceRefreshBtn.textContent : '强制刷新显示'
+
+  try {
+    // 更新按钮状态
+    if (forceRefreshBtn) {
+      forceRefreshBtn.textContent = '刷新中...'
+      forceRefreshBtn.disabled = true
+      forceRefreshBtn.style.opacity = '0.6'
+    }
+
+    updateHostsStatus('正在强制刷新hosts显示...', 'updating')
+    updateCacheStatus('正在获取最新数据...', 'updating')
+
+    // 彻底清除所有缓存
+    console.log('清除所有缓存数据...')
+    cachedHostsContent = null
+    lastHostsUpdate = null
+    localStorage.removeItem('hosts_cache')
+    localStorage.removeItem('hosts_cache_timestamp')
+
+    // 清除定时器
+    if (autoRefreshTimer) {
+      clearTimeout(autoRefreshTimer)
+      autoRefreshTimer = null
+    }
+    if (countdownTimerInterval) {
+      clearInterval(countdownTimerInterval)
+      countdownTimerInterval = null
+    }
+
+    // 强制刷新hosts内容
+    await loadHosts(true)
+
+    showMessage('hosts内容已强制刷新，显示最新数据', 'success')
+    updateCacheStatus('显示最新数据', 'fresh')
+
+  } catch (error) {
+    console.error('强制刷新hosts显示失败:', error)
+    showMessage('强制刷新失败，请稍后重试', 'error')
+    updateHostsStatus('刷新失败', 'error')
+    updateCacheStatus('刷新失败', 'error')
+  } finally {
+    // 恢复按钮状态
+    if (forceRefreshBtn) {
+      forceRefreshBtn.textContent = originalText
+      forceRefreshBtn.disabled = false
+      forceRefreshBtn.style.opacity = '1'
+    }
   }
 }
 
@@ -804,13 +877,13 @@ async function addCustomDomainsBatch() {
 }
 
 // 删除自定义域名（已移至管理后台）
-async function removeDomain(domain) {
+async function removeDomain(_domain) {
   showMessage('自定义域名管理功能已移至专用管理系统', 'info')
   return
 }
 
 // 优选域名（保留此函数以防HTML中有调用）
-async function optimizeDomain(domain) {
+async function optimizeDomain(_domain) {
   showMessage('域名优选功能已集成到立即优选刷新中', 'info')
   return
 }
@@ -897,6 +970,30 @@ function setupEventListeners() {
       }
     }, 500)
   }
+
+  // 强制刷新显示按钮 - 直接刷新hosts内容
+  const forceRefreshBtn = document.getElementById('forceRefreshDisplay')
+  if (forceRefreshBtn) {
+    console.log('找到强制刷新显示按钮，绑定事件')
+    forceRefreshBtn.addEventListener('click', () => {
+      console.log('强制刷新显示按钮被点击')
+      forceRefreshHostsDisplay()
+    })
+  } else {
+    console.error('无法找到强制刷新显示按钮元素')
+    // 等待 500ms 后重试绑定
+    setTimeout(() => {
+      console.log('重试绑定强制刷新显示按钮事件...')
+      const retryBtn = document.getElementById('forceRefreshDisplay')
+      if (retryBtn) {
+        console.log('重试成功，绑定强制刷新显示按钮事件')
+        retryBtn.addEventListener('click', () => {
+          console.log('强制刷新显示按钮被点击（重试绑定）')
+          forceRefreshHostsDisplay()
+        })
+      }
+    }, 500)
+  }
 }
 
 // 初始化
@@ -961,13 +1058,16 @@ function init() {
       // 如果有缓存，先显示缓存内容
       if (hostsElement && cachedHostsContent) {
         hostsElement.textContent = cachedHostsContent
+        const cacheAge = Math.round((Date.now() - lastHostsUpdate) / (60 * 1000))
+        updateCacheStatus(`使用缓存数据 (${cacheAge}分钟前)`, 'cached')
         updateCountdown()
         console.log('显示缓存内容')
-        
+
         // 在后台检查是否需要更新
         const now = Date.now()
         if (now - lastHostsUpdate >= HOSTS_CACHE_DURATION) {
           console.log('缓存过期，后台更新')
+          updateCacheStatus('缓存已过期，正在更新...', 'updating')
           loadHosts(true) // 缓存过期，后台更新
         } else {
           console.log('缓存有效，设置自动刷新定时器')
@@ -977,6 +1077,7 @@ function init() {
     } else {
       // 没有缓存，首次加载
       console.log('没有缓存，首次加载')
+      updateCacheStatus('首次加载中...', 'updating')
       loadHosts(false)
     }
   }
