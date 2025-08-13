@@ -278,7 +278,7 @@ done
 - `CLOUDFLARE_API_TOKEN`: API Token
 - `CLOUDFLARE_ACCOUNT_ID`: 账户 ID
 - `KV_NAMESPACE_ID`: KV 命名空间 ID
-
+test
 </details>
 
 ## 📊 技术特性
