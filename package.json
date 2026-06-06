@@ -10,10 +10,10 @@
     "github-hosts",
     "custom-domains"
   ],
-  "homepage": "https://github.com/Yan-nian/custom-host",
+  "homepage": "https://github.com/violin321/custom-hosts-optimizer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Yan-nian/custom-host.git"
+    "url": "https://github.com/violin321/custom-hosts-optimizer.git"
   },
   "author": "Yan-nian",
   "engines": {
@@ -24,7 +24,7 @@
     "deploy": "wrangler deploy --minify"
   },
   "dependencies": {
-    "hono": "^4.6.7"
+    "hono": "^4.12.23"
   },
   "license": "MIT",
   "devDependencies": {

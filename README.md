@@ -55,7 +55,7 @@
 
 ### 🚀 一键部署（推荐）
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Yan-nian/custom-host)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/violin321/custom-hosts-optimizer)
 
 1. 点击上方按钮
 2. 授权 GitHub 访问
@@ -99,8 +99,8 @@ git push origin main
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Yan-nian/custom-host.git
-cd custom-host
+git clone https://github.com/violin321/custom-hosts-optimizer.git
+cd custom-hosts-optimizer
 
 # 安装依赖
 pnpm install
@@ -151,11 +151,45 @@ copy hosts C:\Windows\System32\drivers\etc\hosts
 
 ## 自定义域名管理
 
+
+### 🔐 管理后台认证（必配）
+
+新版后台不再使用“隐藏路径 = API Key”。部署前请设置 Worker Secrets：
+
+```bash
+npx wrangler secret put ADMIN_USERNAME
+npx wrangler secret put ADMIN_PASSWORD
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put API_TOKEN
+```
+
+建议：
+- `ADMIN_USERNAME`：后台用户名，例如 `admin`
+- `ADMIN_PASSWORD`：强密码，仅用于后台登录
+- `SESSION_SECRET`：32 字符以上随机字符串，用于签名登录 Cookie
+- `API_TOKEN`：程序化管理 API 的 Bearer Token
+
+后台入口：
+
+```text
+https://your-worker-url.workers.dev/admin
+```
+
+管理 API 支持两种认证方式：
+
+```bash
+curl -H "Authorization: Bearer $API_TOKEN" https://your-worker-url.workers.dev/api/custom-domains
+```
+
+或登录后台后由浏览器自动携带 `HttpOnly` session cookie。
+
+旧路径 `/admin-x7k9m3q2` 仅做兼容跳转，不再作为凭据。
+
 ### 🛠️ Web 管理后台
 
 访问管理后台进行可视化操作：
 ```
-https://your-worker-url.workers.dev/admin-x7k9m3q2
+https://your-worker-url.workers.dev/admin
 ```
 
 **主要功能：**
@@ -169,23 +203,25 @@ https://your-worker-url.workers.dev/admin-x7k9m3q2
 使用 RESTful API 进行程序化管理：
 
 ```bash
-# 设置 API Key（默认：admin-x7k9m3q2）
-API_KEY="admin-x7k9m3q2"
+# 设置 API Token（通过 wrangler secret put API_TOKEN 配置）
+API_TOKEN="your-api-token"
 BASE_URL="https://your-worker-url.workers.dev"
 
 # 添加自定义域名
-curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
+curl -X POST "$BASE_URL/api/custom-domains" \
+  -H "Authorization: Bearer $API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"domain": "example.com", "description": "示例域名"}'
 
 # 优选域名IP
-curl -X POST "$BASE_URL/api/optimize/example.com?key=$API_KEY"
+curl -X POST "$BASE_URL/api/optimize/example.com" \
+  -H "Authorization: Bearer $API_TOKEN"
 
-# 获取优选后的hosts文件
+# 获取优选后的hosts文件（公开）
 curl "$BASE_URL/hosts?optimize=true&custom=true"
 
-# 查看所有自定义域名
-curl "$BASE_URL/api/custom-domains?key=$API_KEY"
+# 查看所有自定义域名（需要 API Token）
+curl -H "Authorization: Bearer $API_TOKEN" "$BASE_URL/api/custom-domains"
 ```
 
 ## 💡 应用场景
@@ -194,7 +230,9 @@ curl "$BASE_URL/api/custom-domains?key=$API_KEY"
 为企业内部服务域名选择最优IP，提升内网访问速度：
 ```bash
 # 添加企业内部域名
-curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
+curl -X POST "$BASE_URL/api/custom-domains" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{"domain": "internal.company.com", "description": "企业内部服务"}'
 ```
 
@@ -202,14 +240,17 @@ curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
 为CDN域名选择最快的边缘节点，优化内容分发：
 ```bash
 # 优选CDN域名
-curl -X POST "$BASE_URL/api/optimize/cdn.example.com?key=$API_KEY"
+curl -X POST "$BASE_URL/api/optimize/cdn.example.com" \
+  -H "Authorization: Bearer $API_TOKEN"
 ```
 
 ### 🎮 游戏加速
 为游戏服务器域名选择低延迟IP，提升游戏体验：
 ```bash
 # 添加游戏服务器域名
-curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
+curl -X POST "$BASE_URL/api/custom-domains" \
+  -H "Authorization: Bearer $API_TOKEN" \
+  -H "Content-Type: application/json" \
   -d '{"domain": "game.server.com", "description": "游戏服务器"}'
 ```
 
@@ -218,27 +259,23 @@ curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
 ```bash
 # 批量添加开发域名
 for domain in api.dev.com cdn.dev.com; do
-  curl -X POST "$BASE_URL/api/custom-domains?key=$API_KEY" \
+  curl -X POST "$BASE_URL/api/custom-domains" \
+    -H "Authorization: Bearer $API_TOKEN" \
+    -H "Content-Type: application/json" \
     -d "{\"domain\": \"$domain\", \"description\": \"开发环境\"}"
 done
 ```
 
 ## 部署指南
 
-### 🔐 自定义管理后台地址（推荐）
+### 🔐 管理后台认证配置（必配）
 
-默认管理后台：`/admin-x7k9m3q2`，**强烈建议修改为自定义路径**
-
-**安全格式要求：**
-- `admin-[8-16位字母数字]` （如：`admin-abc12345`）
-- `[3-8位字母]-admin-[6-12位字母数字]` （如：`my-admin-secret123`）
-- `secure-[8-16位字母数字]` （如：`secure-xyz98765`）
-- `mgmt-[8-16位字母数字]` （如：`mgmt-manager001`）
+默认管理后台：`/admin`，需要管理员登录。旧路径 `/admin-x7k9m3q2` 仅保留为兼容跳转，不再作为认证凭据。
 
 **修改步骤：**
 1. Fork 仓库
-2. 编辑 `src/index.ts`，搜索并替换 `admin-x7k9m3q2`
-3. 同时修改 `adminPathAsApiKey` 变量
+2. 设置 Worker Secrets：`ADMIN_USERNAME`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`API_TOKEN`
+3. 登录 `/admin` 后使用后台；程序化 API 使用 `Authorization: Bearer <API_TOKEN>`
 4. 提交并推送代码触发自动部署
 
 ### ⚙️ 详细配置指南
@@ -248,7 +285,7 @@ done
 
 #### 获取 Cloudflare API 凭据
 
-**方式一：Global API Key（推荐）**
+**方式一：Global API Key（用于自动部署，不是后台 API Token）**
 1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. 头像 → "My Profile" → "API Tokens"
 3. "Global API Key" → "View" → 输入密码
@@ -289,7 +326,7 @@ test
 - **自动更新机制**：每小时自动更新DNS记录，保持最新状态
 
 ### 🔒 安全特性
-- **权限控制**：管理后台地址即API Key，简化配置
+- **权限控制**：后台登录 + signed session cookie + Bearer API Token
 - **路径验证**：严格的管理后台路径格式验证
 - **环境隔离**：支持开发和生产环境分离
 
@@ -306,7 +343,7 @@ test
 **问题**：GitHub Actions 提示 "Unable to authenticate request"
 **解决**：
 - 检查 GitHub Secrets 是否正确配置
-- 确认 API Key 没有多余空格
+- 确认 Cloudflare Global API Key 没有多余空格
 - 验证 Cloudflare 账户权限
 
 #### KV 命名空间错误
@@ -319,9 +356,9 @@ test
 #### API 调用 403 错误
 **问题**：API 调用返回权限错误
 **解决**：
-- 使用正确的 API Key（默认：`admin-x7k9m3q2`）
-- 检查管理后台路径是否正确
-- 确认 API Key 格式符合要求
+- 确认已通过 `wrangler secret put API_TOKEN` 设置 API Token
+- 程序化调用使用 `Authorization: Bearer <API_TOKEN>` 或 `x-api-key`
+- 后台页面需先登录 `/admin`
 
 #### 自定义域名无法添加
 **问题**：域名添加失败
@@ -348,7 +385,7 @@ npx wrangler dev
 
 ### 📞 获取帮助
 
-- 📖 查看 [Issues](https://github.com/Yan-nian/custom-host/issues)
+- 📖 查看 [Issues](https://github.com/violin321/custom-hosts-optimizer/issues)
 - 🐛 报告问题或建议
 - 💬 参与社区讨论
 
