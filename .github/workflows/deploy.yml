@@ -54,16 +54,14 @@ jobs:
           echo "✅ CLOUDFLARE_API_KEY 已设置"
           echo "✅ CLOUDFLARE_EMAIL 已设置"
           
-          # 验证用户信息（隐藏敏感信息）
-          echo "👤 验证用户信息..."
+          # wrangler whoami 在部分 wrangler v4 + Global API Key 场景下会误报未登录；
+          # 部署/secret put 才是真实验权点，这里只做非阻塞预检。
+          echo "👤 非阻塞验证 Cloudflare 用户信息..."
           if USER_INFO=$(pnpm exec wrangler whoami 2>/dev/null); then
-            echo "✅ Cloudflare 凭据验证通过"
-            # 隐藏敏感信息，只显示验证成功
+            echo "✅ Cloudflare 凭据预检通过"
             echo "🔐 用户身份验证成功（详细信息已隐藏）"
           else
-            echo "❌ 无法获取用户信息，请检查 Global API Key 和邮箱是否正确"
-            echo "📧 请确认邮箱地址与 Cloudflare 账户匹配"
-            exit 1
+            echo "⚠️ wrangler whoami 预检未通过；继续进入部署阶段，由 deploy/secret put 做最终验权"
           fi
 
       - name: Detect existing deployment configuration
