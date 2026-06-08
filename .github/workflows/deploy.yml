@@ -311,33 +311,45 @@ jobs:
             echo "⚠️ 无法获取部署后状态，但部署命令成功"
           fi
 
-      - name: Set secrets
+      - name: Set Worker application secrets
         run: |
-          echo "🔐 设置 Worker secrets..."
-          
-          # 获取 Worker 名称（避免重复命令调用）
+          echo "🔐 设置 Worker 应用 secrets..."
+
           WORKER_NAME=$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')
-          
+
           if [ -z "$WORKER_NAME" ]; then
             echo "❌ 无法获取 Worker 名称"
             exit 1
           fi
-          
-          echo "📝 为 Worker 设置环境变量..."
-          
-          # 设置 API Key
-          if [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
-            echo "🔑 设置 API_KEY..."
-            if echo "${{ secrets.WORKER_API_KEY }}" | pnpm exec wrangler secret put API_KEY --name "$WORKER_NAME" >/dev/null 2>&1; then
-              echo "✅ API_KEY 设置完成"
+
+          set_secret() {
+            local github_secret_name="$1"
+            local worker_secret_name="$2"
+            local value="$3"
+            if [ -n "$value" ]; then
+              echo "🔑 设置 $worker_secret_name..."
+              if printf '%s' "$value" | pnpm exec wrangler secret put "$worker_secret_name" --name "$WORKER_NAME" >/dev/null 2>&1; then
+                echo "✅ $worker_secret_name 设置完成"
+              else
+                echo "❌ $worker_secret_name 设置失败"
+                exit 1
+              fi
             else
-              echo "⚠️ API_KEY 设置失败，继续执行"
+              echo "⚠️ GitHub Secret $github_secret_name 未设置，跳过 $worker_secret_name"
             fi
-          else
-            echo "⚠️ WORKER_API_KEY secret 未设置，跳过"
+          }
+
+          set_secret "ADMIN_USERNAME" "ADMIN_USERNAME" "${{ secrets.ADMIN_USERNAME }}"
+          set_secret "ADMIN_PASSWORD" "ADMIN_PASSWORD" "${{ secrets.ADMIN_PASSWORD }}"
+          set_secret "SESSION_SECRET" "SESSION_SECRET" "${{ secrets.SESSION_SECRET }}"
+          set_secret "API_TOKEN" "API_TOKEN" "${{ secrets.API_TOKEN }}"
+
+          # 兼容旧 Secret 名称：如果未设置 API_TOKEN 但设置了 WORKER_API_KEY，则写入新的 API_TOKEN。
+          if [ -z "${{ secrets.API_TOKEN }}" ] && [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
+            set_secret "WORKER_API_KEY" "API_TOKEN" "${{ secrets.WORKER_API_KEY }}"
           fi
-          
-          echo "✅ Secrets 设置流程完成（项目功能不依赖这些secrets）"
+
+          echo "✅ Worker 应用 secrets 设置流程完成"
 
       - name: Save deployment info
         uses: actions/upload-artifact@v4

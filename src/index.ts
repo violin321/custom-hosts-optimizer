@@ -1,5 +1,4 @@
 import { Hono } from "hono"
-import { basicAuth } from "hono/basic-auth"
 import {
   formatHostsFile,
   getDomainData,
@@ -20,105 +19,144 @@ import { Bindings } from "./types"
 
 const app = new Hono<{ Bindings: Bindings }>()
 
-// API 验证中间件 - 使用后台地址作为 API Key
-const apiAuth = async (c: any, next: any) => {
-  const path = c.req.path
-  
-  // 需要验证的 API 路径（管理类 API）
-  const protectedPaths = [
-    '/api/custom-domains',
-    '/api/optimize-all', 
-    '/api/optimize/',
-    '/api/reset',
-    '/api/cache/refresh',
-    '/api/cache'
-  ]
-  
-  // 主页刷新功能允许访问的API（限制权限）
-  const mainPageAllowedPaths = [
-    '/api/optimize-all',
-    '/api/cache/refresh'
-  ]
-  
-  // 检查是否是需要保护的 API
-  const isProtectedAPI = protectedPaths.some(protectedPath => 
-    path.startsWith(protectedPath) && 
-    (c.req.method === 'POST' || c.req.method === 'DELETE' || c.req.method === 'PUT')
-  )
-  
-  if (isProtectedAPI) {
-    // 动态获取管理后台地址作为 API Key
-    const referer = c.req.header('referer') || c.req.header('Referer')
-    const apiKey = c.req.header('x-api-key') || c.req.query('key')
-    
-    // 从referer或其他方式动态获取管理路径
-    let adminPathAsApiKey = "admin-x7k9m3q2" // 默认值
-    
-    if (referer) {
-      // 从referer中提取路径，例如：http://localhost:8787/custom-admin -> custom-admin
-      const refererUrl = new URL(referer)
-      const pathParts = refererUrl.pathname.split('/').filter(p => p)
-      if (pathParts.length > 0) {
-        adminPathAsApiKey = pathParts[0]
-      }
-    } else if (apiKey) {
-      // 如果没有referer，直接使用API Key作为管理路径
-      adminPathAsApiKey = apiKey
-    }
-    
-    console.log(`API 访问验证: path=${path}, referer=${referer}, apiKey=${apiKey}, adminPath=${adminPathAsApiKey}`)
-    
-    // 验证请求来源 - 检查是否从管理后台访问
-    const isValidReferer = referer && referer.includes(`/${adminPathAsApiKey}`)
-    
-    // 验证 API Key - 使用管理后台地址（不含 / ）
-    const isValidApiKey = apiKey === adminPathAsApiKey
-    
-    // 特殊处理：主页刷新专用API Key，只允许访问特定的API
-    const isMainPageRefreshKey = apiKey === 'main-page-refresh'
-    const isMainPageAllowedAPI = mainPageAllowedPaths.some(allowedPath => 
-      path.startsWith(allowedPath)
-    )
-    
-    // 验证逻辑
-    if (isMainPageRefreshKey) {
-      // 主页刷新Key只能访问指定的API
-      if (!isMainPageAllowedAPI) {
-        console.log(`主页刷新Key访问被拒绝: ${path} - 不在允许的API列表中`)
-        return c.json({ 
-          error: 'Access denied. Main page refresh key can only access optimization and cache refresh APIs.',
-          code: 'LIMITED_ACCESS_KEY',
-          allowedApis: mainPageAllowedPaths
-        }, 403)
-      }
-      console.log(`主页刷新Key访问已验证: ${path}`)
-    } else if (!isValidReferer && !isValidApiKey) {
-      console.log(`API 访问被拒绝: ${path}, referer: ${referer}, expected admin path: /${adminPathAsApiKey}`)
-      return c.json({ 
-        error: 'Access denied. Please use the admin panel or correct API key.',
-        code: 'ADMIN_ACCESS_REQUIRED',
-        hint: `Visit /${adminPathAsApiKey} to access management features or use the admin path as API key`,
-        apiKeyHint: `Use "${adminPathAsApiKey}" as your API key`
-      }, 403)
-    } else {
-      console.log(`API 访问已验证: ${path}`)
-    }
-  }
-  
-  return await next()
+type AuthPayload = { username: string; exp: number; iat: number }
+
+const SESSION_COOKIE_NAME = "cho_session"
+const SESSION_MAX_AGE_SECONDS = 86400
+const encoder = new TextEncoder()
+
+const base64UrlEncode = (input: ArrayBuffer | Uint8Array | string) => {
+  const bytes = typeof input === "string"
+    ? encoder.encode(input)
+    : input instanceof Uint8Array
+      ? input
+      : new Uint8Array(input)
+  let binary = ""
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte) })
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
 }
 
-// 管理员认证中间件 - 使用URL参数验证
-const adminAuth = async (c: any, next: any) => {
-  // 直接通过认证，不需要账号密码
-  return await next();
+const base64UrlDecode = (input: string) => {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), "=")
+  const binary = atob(padded)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+const timingSafeEqual = (a: string, b: string) => {
+  const aBytes = encoder.encode(a)
+  const bBytes = encoder.encode(b)
+  if (aBytes.length !== bBytes.length) return false
+  let result = 0
+  for (let i = 0; i < aBytes.length; i++) result |= aBytes[i] ^ bBytes[i]
+  return result === 0
+}
+
+const getSessionSecret = (env: Bindings) => env.SESSION_SECRET || ""
+
+const signValue = async (value: string, secret: string) => {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  )
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(value))
+  return base64UrlEncode(signature)
+}
+
+const createSessionCookie = async (env: Bindings, username: string) => {
+  const secret = getSessionSecret(env)
+  if (!secret) throw new Error("SESSION_SECRET is not configured")
+
+  const now = Math.floor(Date.now() / 1000)
+  const payload: AuthPayload = { username, iat: now, exp: now + SESSION_MAX_AGE_SECONDS }
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload))
+  const signature = await signValue(encodedPayload, secret)
+
+  return `${SESSION_COOKIE_NAME}=${encodedPayload}.${signature}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}`
+}
+
+const clearSessionCookie = () => `${SESSION_COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
+
+const getCookieValue = (cookieHeader: string | undefined, name: string) => {
+  if (!cookieHeader) return undefined
+  return cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1)
+}
+
+const verifySessionCookie = async (c: any) => {
+  const token = getCookieValue(c.req.header("cookie"), SESSION_COOKIE_NAME)
+  const secret = getSessionSecret(c.env)
+  if (!token || !secret || !token.includes(".")) return false
+
+  const [encodedPayload, signature] = token.split(".")
+  const expectedSignature = await signValue(encodedPayload, secret)
+  if (!timingSafeEqual(signature, expectedSignature)) return false
+
+  try {
+    const payloadText = new TextDecoder().decode(base64UrlDecode(encodedPayload))
+    const payload = JSON.parse(payloadText) as AuthPayload
+    return typeof payload.username === "string" && payload.exp > Math.floor(Date.now() / 1000)
+  } catch {
+    return false
+  }
+}
+
+const verifyApiToken = (c: any) => {
+  const apiToken = c.env.API_TOKEN
+  if (!apiToken) return false
+
+  const authHeader = c.req.header("authorization") || c.req.header("Authorization") || ""
+  const bearerToken = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]
+  const headerToken = c.req.header("x-api-key")
+
+  return (bearerToken && timingSafeEqual(bearerToken, apiToken)) ||
+    (headerToken && timingSafeEqual(headerToken, apiToken))
+}
+
+const hasValidAuth = async (c: any) => verifyApiToken(c) || await verifySessionCookie(c)
+
+const allowRefreshForRequest = async (c: any) => {
+  if (c.req.query('refresh') !== 'true') return false
+  return await hasValidAuth(c)
+}
+
+const isPublicPath = (path: string, method: string) => {
+  if (method !== "GET" && method !== "HEAD") return false
+  if (["/", "/hosts", "/hosts.json", "/index.js", "/index.css", "/logo.svg", "/og.svg", "/favicon.ico"].includes(path)) return true
+  return path.startsWith("/assets/") || path.startsWith("/static/")
+}
+
+const authMiddleware = async (c: any, next: any) => {
+  const path = c.req.path
+  const method = c.req.method
+
+  if (isPublicPath(path, method) || path === "/admin/login" || path === "/admin-x7k9m3q2") {
+    return await next()
+  }
+
+  if (await hasValidAuth(c)) return await next()
+
+  if (path.startsWith("/admin")) {
+    const redirectTo = encodeURIComponent(path)
+    return c.redirect(`/admin/login?redirect=${redirectTo}`, 302)
+  }
+
+  return c.json({ error: "Authentication required", code: "AUTH_REQUIRED" }, 401)
 }
 
 // 管理后台路由组
 const admin = new Hono<{ Bindings: Bindings }>()
 
-// 应用 API 验证中间件到所有路由
-app.use('*', apiAuth)
+// 应用真实认证中间件到所有非公开路由
+app.use("*", authMiddleware)
 
 // 首页路由
 app.get("/", async (c) => {
@@ -136,7 +174,7 @@ app.get("/", async (c) => {
 <head><title>Custom Hosts</title></head>
 <body>
 <h1>Custom Hosts Service</h1>
-<p>Service is running. Visit /admin-x7k9m3q2 for management.</p>
+<p>Service is running. Visit /admin for management.</p>
 <p>Error loading assets: ${error instanceof Error ? error.message : String(error)}</p>
 </body>
 </html>
@@ -221,6 +259,78 @@ app.get("/favicon.ico", async (c) => {
   }
 })
 
+const getSafeRedirect = (value: string | undefined) => {
+  if (!value || !value.startsWith("/admin")) return "/admin"
+  if (value.startsWith("//")) return "/admin"
+  return value
+}
+
+const renderLoginPage = (errorMessage = "", redirectTo = "/admin") => `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录管理后台</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #2d3748; }
+    .card { width: min(92vw, 420px); background: rgba(255,255,255,.96); padding: 32px; border-radius: 16px; box-shadow: 0 20px 50px rgba(0,0,0,.18); }
+    h1 { margin: 0 0 8px; font-size: 1.6rem; }
+    p { margin: 0 0 24px; color: #718096; }
+    label { display: block; margin: 14px 0 6px; font-weight: 600; }
+    input { width: 100%; padding: 12px 14px; border: 1px solid #cbd5e0; border-radius: 10px; font-size: 1rem; }
+    button { width: 100%; margin-top: 22px; padding: 12px 16px; border: 0; border-radius: 10px; background: #667eea; color: white; font-size: 1rem; font-weight: 700; cursor: pointer; }
+    .error { margin-bottom: 16px; padding: 10px 12px; border-radius: 8px; background: #fed7d7; color: #9b2c2c; }
+  </style>
+</head>
+<body>
+  <form class="card" method="POST" action="/admin/login">
+    <h1>管理后台登录</h1>
+    <p>请输入管理员凭据。旧后台路径不再作为认证凭据。</p>
+    ${errorMessage ? `<div class="error">${errorMessage}</div>` : ""}
+    <input type="hidden" name="redirect" value="${redirectTo.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">
+    <label for="username">用户名</label>
+    <input id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">密码</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">登录</button>
+  </form>
+</body>
+</html>`
+
+app.get("/admin/login", (c) => {
+  return c.html(renderLoginPage("", getSafeRedirect(c.req.query("redirect"))))
+})
+
+app.post("/admin/login", async (c) => {
+  const configuredUsername = c.env.ADMIN_USERNAME
+  const configuredPassword = c.env.ADMIN_PASSWORD
+  const sessionSecret = c.env.SESSION_SECRET
+
+  if (!configuredUsername || !configuredPassword || !sessionSecret) {
+    return c.html(renderLoginPage("管理员凭据或 SESSION_SECRET 尚未配置。", "/admin"), 500)
+  }
+
+  const body = await c.req.parseBody()
+  const username = String(body.username || "")
+  const password = String(body.password || "")
+  const redirectTo = getSafeRedirect(String(body.redirect || "/admin"))
+
+  if (!timingSafeEqual(username, configuredUsername) || !timingSafeEqual(password, configuredPassword)) {
+    return c.html(renderLoginPage("用户名或密码错误。", redirectTo), 401)
+  }
+
+  c.header("Set-Cookie", await createSessionCookie(c.env, username))
+  return c.redirect(redirectTo, 302)
+})
+
+app.post("/admin/logout", (c) => {
+  c.header("Set-Cookie", clearSessionCookie())
+  return c.redirect("/admin/login", 302)
+})
+
+app.get("/admin-x7k9m3q2", (c) => c.redirect("/admin", 302))
+
 // 管理后台主页
 admin.get("/", async (c) => {
   const adminHtml = `<!DOCTYPE html>
@@ -260,6 +370,16 @@ admin.get("/", async (c) => {
         .header p { 
             color: #718096; 
             font-size: 1.1rem;
+        }
+        .logout-form { margin-top: 16px; }
+        .logout-form button {
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 8px;
+            background: #e53e3e;
+            color: #fff;
+            font-weight: 700;
+            cursor: pointer;
         }
         .card { 
             background: rgba(255,255,255,0.95); 
@@ -526,11 +646,6 @@ admin.get("/", async (c) => {
     </div>
 
     <script>
-        // 动态获取当前管理路径作为API Key
-        const currentPath = window.location.pathname;
-        const apiKey = currentPath.startsWith('/') ? currentPath.substring(1) : currentPath;
-        console.log('当前管理路径API Key:', apiKey);
-        
         // 显示通知
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alert-container');
@@ -564,11 +679,8 @@ admin.get("/", async (c) => {
             }
             
             try {
-                console.log('开始加载域名列表，API Key:', apiKey);
+                console.log('开始加载域名列表');
                 const response = await fetch('/api/custom-domains', {
-                    headers: {
-                        'x-api-key': apiKey
-                    }
                 });
                 
                 console.log('API响应状态:', response.status);
@@ -656,8 +768,7 @@ admin.get("/", async (c) => {
                 const response = await fetch('/api/custom-domains/batch', {
                     method: 'POST',
                     headers: { 
-                        'Content-Type': 'application/json',
-                        'x-api-key': apiKey
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ domains })
                 });
@@ -686,9 +797,6 @@ admin.get("/", async (c) => {
             try {
                 const response = await fetch('/api/custom-domains/' + encodeURIComponent(domain), {
                     method: 'DELETE',
-                    headers: {
-                        'x-api-key': apiKey
-                    }
                 });
 
                 const result = await response.json();
@@ -711,9 +819,6 @@ admin.get("/", async (c) => {
             try {
                 const response = await fetch('/api/optimize/' + encodeURIComponent(domain), {
                     method: 'POST',
-                    headers: {
-                        'x-api-key': apiKey
-                    }
                 });
 
                 const result = await response.json();
@@ -735,9 +840,6 @@ admin.get("/", async (c) => {
             try {
                 const response = await fetch('/api/custom-domains', {
                     method: 'DELETE',
-                    headers: {
-                        'x-api-key': apiKey
-                    }
                 });
 
                 if (response.ok) {
@@ -755,17 +857,10 @@ admin.get("/", async (c) => {
             }
         }
 
-        // 加载系统配置
-        async function loadSystemConfig() {
-            // API Key 现在使用管理后台地址，无需额外配置
-            console.log('API Key 已简化为使用管理后台地址:', apiKey);
-        }
-
         // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', () => {
             loadStats();
             loadDomains();
-            loadSystemConfig();
         });
 
         // 回车键提交
@@ -804,7 +899,7 @@ admin.get("/debug", async (c) => {
 app.get("/hosts.json", async (c) => {
   try {
     // 检查是否强制刷新缓存
-    const forceRefresh = c.req.query('refresh') === 'true'
+    const forceRefresh = await allowRefreshForRequest(c)
     
     console.log(`JSON request - refresh: ${forceRefresh}`)
     
@@ -852,7 +947,7 @@ app.get("/hosts.json", async (c) => {
 app.get("/hosts", async (c) => {
   try {
     // 获取查询参数
-    const forceRefresh = c.req.query('refresh') === 'true'
+    const forceRefresh = await allowRefreshForRequest(c)
     const optimizeParam = c.req.query('optimize')
     const customParam = c.req.query('custom')
     
@@ -1031,7 +1126,7 @@ app.post("/api/optimize-all", async (c) => {
     console.log(`=== 开始执行全域名优选 [${requestId}] ===`)
     console.log(`请求时间: ${new Date().toISOString()}`)
     console.log(`请求来源: ${c.req.header('user-agent') || 'Unknown'}`)
-    console.log(`API Key: ${c.req.header('x-api-key') || 'None'}`)
+    console.log(`API token provided: ${c.req.header('x-api-key') ? 'yes' : 'no'}`)
     console.log(`请求IP: ${c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || 'Unknown'}`)
 
     // 第一步：重新获取最新的GitHub域名数据（这会触发所有GitHub域名的重新解析）
@@ -1193,11 +1288,7 @@ app.post("/api/optimize-all", async (c) => {
       error: "全域名优选失败: " + errorMessage,
       errorType: error instanceof Error ? error.constructor.name : 'UnknownError',
       duration: totalDuration,
-      timestamp: new Date().toISOString(),
-      details: {
-        message: errorMessage,
-        stack: error instanceof Error ? error.stack : undefined
-      }
+      timestamp: new Date().toISOString()
     }
 
     console.error(`[${requestId}] 返回错误响应:`, errorResponse)
@@ -1394,45 +1485,14 @@ app.delete("/api/cache", async (c) => {
 
 
 // 管理后台路由
-app.route("/admin-x7k9m3q2", admin.use("*", adminAuth))
-
-// 动态后台路由 - 只允许安全的管理后台路径
-app.get("/:adminPath", async (c) => {
-  const adminPath = c.req.param("adminPath")
-  
-  // 排除一些特殊路径，避免冲突
-  const excludedPaths = ['hosts', 'hosts.json', 'api', 'favicon.ico', 'robots.txt', 'sitemap.xml']
-  if (excludedPaths.includes(adminPath)) {
-    return c.notFound()
-  }
-  
-  // 只允许特定格式的管理后台路径（安全限制）
-  const allowedAdminPatterns = [
-    /^admin-[a-z0-9]{8,16}$/,  // admin-xxxxxxxx 格式（8-16位字母数字）
-    /^[a-z]{3,8}-admin-[a-z0-9]{6,12}$/,  // xxx-admin-xxxxxx 格式
-    /^secure-[a-z0-9]{8,16}$/,  // secure-xxxxxxxx 格式
-    /^mgmt-[a-z0-9]{8,16}$/,    // mgmt-xxxxxxxx 格式
-  ]
-  
-  // 检查路径是否符合安全格式
-  const isValidAdminPath = allowedAdminPatterns.some(pattern => pattern.test(adminPath))
-  
-  if (!isValidAdminPath) {
-    console.log(`拒绝访问非法管理路径: ${adminPath}`)
-    return c.notFound()
-  }
-  
-  console.log(`允许访问安全管理路径: ${adminPath}`)
-  // 返回管理后台页面
-  return admin.fetch(new Request(c.req.url.replace(`/${adminPath}`, '/')), c.env)
-})
+app.route("/admin", admin)
 
 // 通用路由处理
 app.get("*", async (c) => {
   const path = c.req.path
   
   // 检查是否是域名查询路径
-  if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/admin-x7k9m3q2")) {
+  if (path !== "/" && !path.startsWith("/api/") && !path.startsWith("/hosts") && path !== "/favicon.ico" && !path.startsWith("/admin")) {
     const domain = path.substring(1) // 移除开头的 /
     
     // 简单验证是否是域名格式

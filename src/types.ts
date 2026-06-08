@@ -3,11 +3,13 @@
 
 export interface Bindings {
   custom_hosts: KVNamespace
-  API_KEY: string
+  API_KEY?: string
   ASSETS: { get(key: string): Promise<string | null> }
   ENABLE_OPTIMIZATION?: string
   ADMIN_USERNAME?: string
   ADMIN_PASSWORD?: string
+  SESSION_SECRET?: string
+  API_TOKEN?: string
 }
 
 export interface CustomDomain {
