@@ -877,13 +877,16 @@ app.get("/clash-hosts.yaml", async (c) => {
 
     c.header('Cache-Control', forceRefresh ? 'no-cache' : 'public, max-age=3600')
     c.header('X-Cache-Status', forceRefresh ? 'MISS' : 'HIT')
-    c.header('Content-Type', 'text/yaml; charset=utf-8')
-
-    return c.text(yamlContent)
+    return c.body(yamlContent, 200, {
+      'Content-Type': 'text/yaml; charset=utf-8',
+      'Cache-Control': forceRefresh ? 'no-cache' : 'public, max-age=3600',
+      'X-Cache-Status': forceRefresh ? 'MISS' : 'HIT'
+    })
   } catch (error) {
     console.error("Error in /clash-hosts.yaml:", error)
-    c.header('Content-Type', 'text/yaml; charset=utf-8')
-    return c.text(`# Error generating Clash hosts YAML: ${quoteYamlScalar(error instanceof Error ? error.message : String(error))}\nhosts:\n`, 500)
+    return c.body(`# Error generating Clash hosts YAML: ${quoteYamlScalar(error instanceof Error ? error.message : String(error))}\nhosts:\n`, 500, {
+      'Content-Type': 'text/yaml; charset=utf-8'
+    })
   }
 })
 
