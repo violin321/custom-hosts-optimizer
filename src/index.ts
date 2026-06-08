@@ -656,7 +656,7 @@ admin.get("/", async (c) => {
             const input = document.getElementById('batch-domains').value.trim();
             const seen = new Set();
             const valid = [], invalid = [], duplicates = [];
-            input.split('\n').map(line => line.trim()).filter(Boolean).forEach((line, index) => {
+            input.split('\\n').map(line => line.trim()).filter(Boolean).forEach((line, index) => {
                 const parts = line.split('|');
                 const domain = (parts[0] || '').trim().toLowerCase();
                 const description = (parts.slice(1).join('|') || '').trim();
@@ -670,8 +670,8 @@ admin.get("/", async (c) => {
         function updateBatchPreview() {
             const { valid, invalid, duplicates } = parseBatchInput();
             document.getElementById('batch-preview').textContent = '有效: ' + valid.length + ' 个；无效: ' + invalid.length + ' 个；重复: ' + duplicates.length + ' 个' +
-                (invalid.length ? '\n无效行: ' + invalid.slice(0, 5).map(i => '#' + i.line + ' ' + i.value).join('；') : '') +
-                (duplicates.length ? '\n重复行: ' + duplicates.slice(0, 5).map(i => '#' + i.line + ' ' + i.domain).join('；') : '');
+                (invalid.length ? '\\n无效行: ' + invalid.slice(0, 5).map(i => '#' + i.line + ' ' + i.value).join('；') : '') +
+                (duplicates.length ? '\\n重复行: ' + duplicates.slice(0, 5).map(i => '#' + i.line + ' ' + i.domain).join('；') : '');
         }
 
         async function batchAddDomains() {
