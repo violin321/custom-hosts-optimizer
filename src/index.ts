@@ -571,7 +571,7 @@ admin.get("/", async (c) => {
     </div>
 
     <script>
-        const domainPattern = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        const domainPattern = /^[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$/;
         const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
         const formatTime = (value) => value ? new Date(value).toLocaleString() : '无';
         const formatJson = (value) => JSON.stringify(value, null, 2);
@@ -642,9 +642,9 @@ admin.get("/", async (c) => {
                     return '<div class="domain-item"><div class="domain-info"><strong>' + domain + '</strong>' +
                         (item.description ? '<br><small>' + escapeHtml(item.description) + '</small>' : '') +
                         '<br><small>IP: ' + escapeHtml(item.ip || '未解析') + ' | 添加时间: ' + escapeHtml(formatTime(item.timestamp || item.addedAt)) + '</small></div>' +
-                        '<div class="domain-actions"><button class="btn btn-info btn-small" onclick="testDomain(\'' + domain + '\')">🔎 测试</button>' +
-                        '<button class="btn btn-success btn-small" onclick="optimizeDomain(\'' + domain + '\')">🚀 优选</button>' +
-                        '<button class="btn btn-danger btn-small" onclick="removeDomain(\'' + domain + '\')">🗑️ 删除</button></div></div>';
+                        '<div class="domain-actions"><button class="btn btn-info btn-small" onclick="testDomain(&quot;' + domain + '&quot;)">🔎 测试</button>' +
+                        '<button class="btn btn-success btn-small" onclick="optimizeDomain(&quot;' + domain + '&quot;)">🚀 优选</button>' +
+                        '<button class="btn btn-danger btn-small" onclick="removeDomain(&quot;' + domain + '&quot;)">🗑️ 删除</button></div></div>';
                 }).join('');
             } catch (error) {
                 container.innerHTML = '<p style="text-align:center;color:#e53e3e;padding:40px;">加载失败: ' + escapeHtml(error.message) + '</p>';
