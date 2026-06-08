@@ -171,6 +171,31 @@ export async function storeData(
   await updateHostsData(env, data)
 }
 
+// 从 KV 缓存读取 GitHub hosts 数据，不触发网络刷新或 KV 写入
+export async function getCachedHostsData(env: Bindings): Promise<HostEntry[]> {
+  try {
+    const kvData = (await env.custom_hosts.get("domain_data", {
+      type: "json",
+    })) as KVData | null
+
+    if (!kvData?.domain_data) return []
+
+    const entries: HostEntry[] = []
+    for (const domain of GITHUB_URLS) {
+      const domainData = kvData.domain_data[domain]
+      if (domainData?.ip) {
+        entries.push([String(domainData.ip), domain])
+      }
+    }
+
+    console.log(`Loaded ${entries.length} GitHub entries from cache without refresh`)
+    return entries
+  } catch (error) {
+    console.error("Error getting cached hosts data:", error)
+    return []
+  }
+}
+
 // 获取 hosts 数据 - 优化缓存策略，参考 TinsFox/github-hosts 最佳实践
 export async function getHostsData(env: Bindings, forceRefresh: boolean = false): Promise<HostEntry[]> {
   try {
@@ -465,24 +490,82 @@ export async function removeCustomDomain(env: Bindings, domain: string): Promise
   }
 }
 
+const customDomainsToHostEntries = (customDomains: CustomDomain[]): HostEntry[] => customDomains
+  .filter(cd => cd.isActive !== false)
+  .map(cd => {
+    console.log(`Processing custom domain: ${cd.domain} -> ${cd.ip} (active: ${cd.isActive !== false})`)
+    return [String(cd.ip), cd.domain] as HostEntry
+  })
+
+// 从 KV 缓存读取自定义域名数据，不触发迁移或 KV 写入
+export async function getCachedCustomDomainsData(env: Bindings): Promise<HostEntry[]> {
+  try {
+    const stored = await env.custom_hosts.get("custom_domains", { type: "json" }) as CustomDomain[] | Record<string, any> | null
+    if (!stored) return []
+
+    const customDomains = Array.isArray(stored)
+      ? stored
+      : Object.values(stored).map((item: any) => ({
+        domain: item.domain || '',
+        ip: item.ip || '',
+        addedAt: item.addedAt || new Date().toISOString(),
+        resolvedAt: item.resolvedAt || item.addedAt,
+        standardIp: item.standardIp || item.ip,
+        optimizedIp: item.optimizedIp || item.ip,
+        resolveMethod: item.resolveMethod || 'cached',
+        isActive: item.isActive !== false
+      }))
+
+    const customEntries = customDomainsToHostEntries(customDomains)
+    console.log(`Loaded ${customEntries.length} cached custom domains without migration`)
+    return customEntries
+  } catch (error) {
+    console.error("Error getting cached custom domains data:", error)
+    return []
+  }
+}
+
 // 获取包含自定义域名的完整数据
 export async function fetchCustomDomainsData(env: Bindings): Promise<HostEntry[]> {
   try {
     const customDomains = await getCustomDomains(env)
     console.log(`Raw custom domains from storage: ${customDomains?.length || 0}`)
     
-    const customEntries: HostEntry[] = customDomains
-      .filter(cd => cd.isActive !== false)
-      .map(cd => {
-        console.log(`Processing custom domain: ${cd.domain} -> ${cd.ip} (active: ${cd.isActive !== false})`)
-        return [cd.ip, cd.domain]
-      })
+    const customEntries: HostEntry[] = customDomainsToHostEntries(customDomains)
     
     console.log(`Found ${customEntries.length} active custom domains`)
     return customEntries
   } catch (error) {
     console.error("Error fetching custom domains data:", error)
     return []
+  }
+}
+
+// 从缓存读取包含自定义域名的完整 hosts 数据，不触发 GitHub hosts 刷新或 KV 写入
+export async function getCachedCompleteHostsData(env: Bindings): Promise<HostEntry[]> {
+  try {
+    console.log("Fetching complete hosts data from cache without refresh")
+
+    const githubEntries = await getCachedHostsData(env)
+    const customEntries = await getCachedCustomDomainsData(env)
+
+    const domainMap = new Map<string, string>()
+
+    for (const [ip, domain] of githubEntries) {
+      domainMap.set(domain, ip)
+    }
+
+    for (const [ip, domain] of customEntries) {
+      domainMap.set(domain, ip)
+    }
+
+    const allEntries: HostEntry[] = Array.from(domainMap.entries()).map(([domain, ip]) => [ip, domain])
+    console.log(`Loaded ${allEntries.length} complete entries from cache without refresh`)
+
+    return allEntries
+  } catch (error) {
+    console.error("Error getting cached complete hosts data:", error)
+    return await getCachedHostsData(env)
   }
 }
 

@@ -149,6 +149,23 @@ sudo cp hosts /etc/hosts
 copy hosts C:\Windows\System32\drivers\etc\hosts
 ```
 
+### 🧩 OpenClash / Clash hosts
+
+OpenClash/Clash 可直接使用 YAML 格式的 hosts 配置：
+
+```yaml
+hosts:
+  github.com: 140.82.x.x
+```
+
+接口地址：`https://hosts.violin47.dpdns.org/clash-hosts.yaml`
+
+通用格式：`https://your-worker-url.workers.dev/clash-hosts.yaml`
+
+可选参数：
+- `?custom=false`：只输出 GitHub 相关域名，不包含自定义域名。
+- `?refresh=true`：仅在携带有效后台会话或 API Token 时刷新缓存；未授权请求仍只读取缓存。
+
 ## 自定义域名管理
 
 

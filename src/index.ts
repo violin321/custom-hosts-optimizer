@@ -2,6 +2,8 @@ import { Hono } from "hono"
 import {
   formatHostsFile,
   getDomainData,
+  getCachedCompleteHostsData,
+  getCachedHostsData,
   getCompleteHostsData,
   getHostsData,
   resetHostsData,
@@ -245,7 +247,7 @@ const allowRefreshForRequest = async (c: any) => {
 
 const isPublicPath = (path: string, method: string) => {
   if (method !== "GET" && method !== "HEAD") return false
-  if (["/", "/hosts", "/hosts.json", "/index.js", "/index.css", "/logo.svg", "/og.svg", "/favicon.ico"].includes(path)) return true
+  if (["/", "/hosts", "/hosts.json", "/clash-hosts.yaml", "/index.js", "/index.css", "/logo.svg", "/og.svg", "/favicon.ico"].includes(path)) return true
   return path.startsWith("/assets/") || path.startsWith("/static/")
 }
 
@@ -829,6 +831,59 @@ app.get("/hosts.json", async (c) => {
       error: error instanceof Error ? error.message : String(error),
       timestamp: new Date().toISOString()
     }, 500)
+  }
+})
+
+const quoteYamlScalar = (value: unknown) => {
+  const text = String(value)
+  return `"${text.replace(/\\/g, "\\\\").replace(/\"/g, '\\"').replace(/[\u0000-\u001f\u007f-\u009f]/g, (char) => {
+    const code = char.charCodeAt(0)
+    switch (char) {
+      case "\b": return "\\b"
+      case "\t": return "\\t"
+      case "\n": return "\\n"
+      case "\f": return "\\f"
+      case "\r": return "\\r"
+      default: return `\\x${code.toString(16).padStart(2, "0")}`
+    }
+  })}"`
+}
+
+const formatClashHostsYaml = (entries: HostEntry[]) => {
+  const lines = ["hosts:"]
+  for (const [ip, domain] of entries) {
+    lines.push(`  ${quoteYamlScalar(domain)}: ${quoteYamlScalar(ip)}`)
+  }
+  return `${lines.join("\n")}\n`
+}
+
+app.get("/clash-hosts.yaml", async (c) => {
+  try {
+    const refreshRequested = c.req.query('refresh') === 'true'
+    const forceRefresh = await allowRefreshForRequest(c)
+    const includeCustomDomains = c.req.query('custom') !== 'false'
+
+    console.log(`Clash YAML request - refresh requested: ${refreshRequested}, refresh allowed: ${forceRefresh}, custom: ${includeCustomDomains}`)
+
+    const allData = includeCustomDomains
+      ? forceRefresh
+        ? await getCompleteHostsData(c.env, true)
+        : await getCachedCompleteHostsData(c.env)
+      : forceRefresh
+        ? await getHostsData(c.env, true)
+        : await getCachedHostsData(c.env)
+
+    const yamlContent = formatClashHostsYaml(allData)
+
+    c.header('Cache-Control', forceRefresh ? 'no-cache' : 'public, max-age=3600')
+    c.header('X-Cache-Status', forceRefresh ? 'MISS' : 'HIT')
+    c.header('Content-Type', 'text/yaml; charset=utf-8')
+
+    return c.text(yamlContent)
+  } catch (error) {
+    console.error("Error in /clash-hosts.yaml:", error)
+    c.header('Content-Type', 'text/yaml; charset=utf-8')
+    return c.text(`# Error generating Clash hosts YAML: ${quoteYamlScalar(error instanceof Error ? error.message : String(error))}\nhosts:\n`, 500)
   }
 })
 
