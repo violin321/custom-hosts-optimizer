@@ -10,6 +10,10 @@ export interface Bindings {
   ADMIN_PASSWORD?: string
   SESSION_SECRET?: string
   API_TOKEN?: string
+  COMMIT_HASH?: string
+  CF_PAGES_COMMIT_SHA?: string
+  SOURCE_COMMIT?: string
+  GITHUB_SHA?: string
 }
 
 export interface CustomDomain {

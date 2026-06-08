@@ -19,7 +19,116 @@ import { Bindings } from "./types"
 
 const app = new Hono<{ Bindings: Bindings }>()
 
+const APP_VERSION = "1.3.0"
+const DOMAIN_PATTERN = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+const STATUS_KV_CHECK_KEY = "status_check"
+
+const escapeHtml = (value: string) => value
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;")
+
+const normalizeDomain = (domain: string) => domain.trim().toLowerCase()
+
+const getCommitHash = (env: Bindings) =>
+  env.COMMIT_HASH || env.CF_PAGES_COMMIT_SHA || env.SOURCE_COMMIT || env.GITHUB_SHA || "unknown"
+
+const getCacheStatusSnapshot = async (env: Bindings) => {
+  const kvData = (await env.custom_hosts.get("domain_data", { type: "json" })) as any
+  if (!kvData) {
+    return {
+      cached: false,
+      message: "No cache data found",
+      lastUpdated: null,
+      ageMinutes: null,
+      isValid: false,
+      validUntilMinutes: 0,
+      domainCount: 0,
+      updateCount: 0,
+      version: "unknown"
+    }
+  }
+
+  const lastUpdated = new Date(kvData.lastUpdated)
+  const now = new Date()
+  const ageMinutes = Number.isNaN(lastUpdated.getTime())
+    ? null
+    : Math.round((now.getTime() - lastUpdated.getTime()) / 60000)
+  const cacheValidTime = 6 * 60
+  const isValid = ageMinutes !== null && ageMinutes < cacheValidTime
+
+  return {
+    cached: true,
+    lastUpdated: kvData.lastUpdated || null,
+    ageMinutes,
+    isValid,
+    validUntilMinutes: ageMinutes === null ? 0 : Math.max(0, cacheValidTime - ageMinutes),
+    domainCount: Object.keys(kvData.domain_data || {}).length,
+    updateCount: kvData.updateCount || 0,
+    version: kvData.version || "unknown"
+  }
+}
+
+const checkKvReadWrite = async (env: Bindings) => {
+  const startedAt = Date.now()
+  const payload = JSON.stringify({ checkedAt: new Date().toISOString() })
+  try {
+    await env.custom_hosts.put(STATUS_KV_CHECK_KEY, payload, { expirationTtl: 120 })
+    const readBack = await env.custom_hosts.get(STATUS_KV_CHECK_KEY)
+    return {
+      ok: readBack === payload,
+      readable: Boolean(readBack),
+      writable: true,
+      latencyMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString()
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      readable: false,
+      writable: false,
+      latencyMs: Date.now() - startedAt,
+      checkedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+const buildAdminStatus = async (c: any) => {
+  const [cache, customDomains, kv] = await Promise.all([
+    getCacheStatusSnapshot(c.env),
+    getCustomDomains(c.env),
+    checkKvReadWrite(c.env)
+  ])
+  const session = await getSessionPayload(c)
+
+  return {
+    worker: {
+      name: "custom-hosts-optimizer",
+      version: APP_VERSION,
+      commit: getCommitHash(c.env),
+      timestamp: new Date().toISOString()
+    },
+    user: {
+      username: session?.username || "api-token",
+      authenticatedBy: session ? "session" : "api-token"
+    },
+    kv,
+    hosts: {
+      count: cache.domainCount,
+      customDomainCount: customDomains.length
+    },
+    cache,
+    customDomains: {
+      count: customDomains.length
+    }
+  }
+}
+
 type AuthPayload = { username: string; exp: number; iat: number }
+type AuthState = AuthPayload | null
 
 const SESSION_COOKIE_NAME = "cho_session"
 const SESSION_MAX_AGE_SECONDS = 86400
@@ -91,23 +200,29 @@ const getCookieValue = (cookieHeader: string | undefined, name: string) => {
     ?.slice(name.length + 1)
 }
 
-const verifySessionCookie = async (c: any) => {
+const getSessionPayload = async (c: any): Promise<AuthState> => {
   const token = getCookieValue(c.req.header("cookie"), SESSION_COOKIE_NAME)
   const secret = getSessionSecret(c.env)
-  if (!token || !secret || !token.includes(".")) return false
+  if (!token || !secret || !token.includes(".")) return null
 
   const [encodedPayload, signature] = token.split(".")
   const expectedSignature = await signValue(encodedPayload, secret)
-  if (!timingSafeEqual(signature, expectedSignature)) return false
+  if (!timingSafeEqual(signature, expectedSignature)) return null
 
   try {
     const payloadText = new TextDecoder().decode(base64UrlDecode(encodedPayload))
     const payload = JSON.parse(payloadText) as AuthPayload
-    return typeof payload.username === "string" && payload.exp > Math.floor(Date.now() / 1000)
+    if (typeof payload.username === "string" && payload.exp > Math.floor(Date.now() / 1000)) {
+      return payload
+    }
   } catch {
-    return false
+    // Ignore malformed cookies and treat them as unauthenticated.
   }
+
+  return null
 }
+
+const verifySessionCookie = async (c: any) => Boolean(await getSessionPayload(c))
 
 const verifyApiToken = (c: any) => {
   const apiToken = c.env.API_TOKEN
@@ -333,6 +448,8 @@ app.get("/admin-x7k9m3q2", (c) => c.redirect("/admin", 302))
 
 // 管理后台主页
 admin.get("/", async (c) => {
+  const session = await getSessionPayload(c)
+  const username = escapeHtml(session?.username || "api-token")
   const adminHtml = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -341,533 +458,304 @@ admin.get("/", async (c) => {
     <title>自定义域名管理后台</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #333;
-        }
-        .container { 
-            max-width: 1400px; 
-            margin: 0 auto; 
-            padding: 20px; 
-        }
-        .header { 
-            background: rgba(255,255,255,0.95); 
-            padding: 30px; 
-            border-radius: 16px; 
-            margin-bottom: 24px; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
-            text-align: center;
-        }
-        .header h1 { 
-            color: #2d3748; 
-            margin-bottom: 8px; 
-            font-size: 2.2rem;
-            font-weight: 700;
-        }
-        .header p { 
-            color: #718096; 
-            font-size: 1.1rem;
-        }
-        .logout-form { margin-top: 16px; }
-        .logout-form button {
-            padding: 8px 14px;
-            border: 0;
-            border-radius: 8px;
-            background: #e53e3e;
-            color: #fff;
-            font-weight: 700;
-            cursor: pointer;
-        }
-        .card { 
-            background: rgba(255,255,255,0.95); 
-            padding: 24px; 
-            border-radius: 16px; 
-            margin-bottom: 24px; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .card h3 {
-            color: #2d3748;
-            margin-bottom: 20px;
-            font-size: 1.3rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { background: rgba(255,255,255,0.95); padding: 28px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); backdrop-filter: blur(10px); }
+        .header-top { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+        .header h1 { color: #2d3748; margin-bottom: 8px; font-size: 2.1rem; font-weight: 700; }
+        .header p, .muted { color: #718096; font-size: .95rem; }
+        .user-pill { background: #edf2f7; border-radius: 999px; padding: 8px 12px; color: #2d3748; font-weight: 700; }
+        .logout-form { margin-top: 10px; text-align: right; }
+        .logout-form button { padding: 8px 14px; border: 0; border-radius: 8px; background: #e53e3e; color: #fff; font-weight: 700; cursor: pointer; }
+        .card { background: rgba(255,255,255,0.95); padding: 24px; border-radius: 16px; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .card h3 { color: #2d3748; margin-bottom: 18px; font-size: 1.25rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
         .form-group { margin-bottom: 16px; }
-        .form-group label { 
-            display: block; 
-            margin-bottom: 6px; 
-            font-weight: 600; 
-            color: #4a5568;
-            font-size: 0.95rem;
-        }
-        .form-group textarea { 
-            width: 100%; 
-            padding: 12px 16px; 
-            border: 2px solid #e2e8f0; 
-            border-radius: 12px; 
-            font-size: 14px; 
-            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-            transition: all 0.2s ease;
-            resize: vertical;
-            line-height: 1.5;
-        }
-        .form-group textarea:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        .btn { 
-            padding: 12px 24px; 
-            border: none; 
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-size: 14px; 
-            font-weight: 600;
-            margin-right: 12px; 
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .btn-primary { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-            color: white; 
-            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-        }
-        .btn-primary:hover { 
-            transform: translateY(-2px); 
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-        }
-        .btn-danger { 
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); 
-            color: white; 
-            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
-        }
-        .btn-danger:hover { 
-            transform: translateY(-2px); 
-            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.6);
-        }
-        .btn-success { 
-            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%); 
-            color: white; 
-            box-shadow: 0 4px 15px rgba(81, 207, 102, 0.4);
-        }
-        .btn-success:hover { 
-            transform: translateY(-2px); 
-            box-shadow: 0 6px 20px rgba(81, 207, 102, 0.6);
-        }
-        .btn-info {
-            background: linear-gradient(135deg, #339af0 0%, #228be6 100%);
-            color: white;
-            box-shadow: 0 4px 15px rgba(51, 154, 240, 0.4);
-        }
-        .btn-info:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(51, 154, 240, 0.6);
-        }
-        .domain-list { 
-            max-height: 500px; 
-            overflow-y: auto; 
-            background: #f8fafc;
-            border-radius: 12px;
-            padding: 16px;
-        }
-        .domain-item { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            padding: 16px; 
-            background: white;
-            border-radius: 12px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-            transition: all 0.2s ease;
-        }
-        .domain-item:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        }
-        .domain-info { flex: 1; }
-        .domain-info strong {
-            color: #2d3748;
-            font-size: 1.1rem;
-        }
-        .domain-info small {
-            color: #718096;
-            font-size: 0.85rem;
-        }
-        .domain-actions { 
-            display: flex; 
-            gap: 8px; 
-        }
-        .stats { 
-            display: grid; 
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
-            gap: 20px; 
-            margin-bottom: 24px; 
-        }
-        .stat-card { 
-            background: rgba(255,255,255,0.95); 
-            padding: 24px; 
-            border-radius: 16px; 
-            text-align: center; 
-            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255,255,255,0.2);
-            transition: all 0.2s ease;
-        }
-        .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 40px rgba(0,0,0,0.15);
-        }
-        .stat-number { 
-            font-size: 2.5em; 
-            font-weight: 700; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .stat-label { 
-            color: #718096; 
-            margin-top: 8px; 
-            font-weight: 500;
-        }
-        .alert { 
-            padding: 16px 20px; 
-            margin-bottom: 20px; 
-            border-radius: 12px; 
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .alert-success { 
-            background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); 
-            color: #155724; 
-            border: 1px solid #c3e6cb; 
-        }
-        .alert-error { 
-            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); 
-            color: #721c24; 
-            border: 1px solid #f5c6cb; 
-        }
-        .batch-input { 
-            min-height: 120px; 
-            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        }
-        .debug-section {
-            background: #f8fafc;
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 16px;
-        }
-        .controls-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-        .controls-left {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-        @media (max-width: 768px) {
-            .container { padding: 16px; }
-            .controls-row { flex-direction: column; align-items: stretch; }
-            .controls-left { justify-content: center; }
-            .stats { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-            .debug-grid { grid-template-columns: 1fr; }
-        }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 600; color: #4a5568; font-size: 0.95rem; }
+        input, textarea { width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; transition: all 0.2s ease; }
+        textarea { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; resize: vertical; line-height: 1.5; }
+        input:focus, textarea:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+        .btn { padding: 12px 20px; border: none; border-radius: 12px; cursor: pointer; font-size: 14px; font-weight: 600; margin-right: 10px; margin-bottom: 8px; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 8px; }
+        .btn:hover { transform: translateY(-2px); }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); }
+        .btn-danger { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%); color: white; box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4); }
+        .btn-success { background: linear-gradient(135deg, #51cf66 0%, #40c057 100%); color: white; box-shadow: 0 4px 15px rgba(81, 207, 102, 0.4); }
+        .btn-info { background: linear-gradient(135deg, #339af0 0%, #228be6 100%); color: white; box-shadow: 0 4px 15px rgba(51, 154, 240, 0.4); }
+        .btn-small { padding: 8px 12px; font-size: 12px; }
+        .domain-list { max-height: 500px; overflow-y: auto; background: #f8fafc; border-radius: 12px; padding: 16px; }
+        .domain-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px; background: white; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .domain-info { flex: 1; overflow-wrap: anywhere; }
+        .domain-info strong { color: #2d3748; font-size: 1.08rem; }
+        .domain-info small { color: #718096; font-size: 0.85rem; }
+        .domain-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .stats, .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 20px; margin-bottom: 24px; }
+        .stat-card, .status-card { background: rgba(255,255,255,0.95); padding: 20px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .stat-card { text-align: center; }
+        .stat-number { font-size: 2.2em; font-weight: 700; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .stat-label, .status-label { color: #718096; margin-top: 6px; font-weight: 500; }
+        .status-value { color: #2d3748; font-size: 1.1rem; font-weight: 700; overflow-wrap: anywhere; }
+        .alert { padding: 14px 18px; margin-bottom: 16px; border-radius: 12px; font-weight: 500; display: flex; align-items: center; gap: 12px; }
+        .alert-success { background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); color: #721c24; border: 1px solid #f5c6cb; }
+        .batch-input { min-height: 120px; }
+        .preview { margin: 12px 0 16px; padding: 12px; border-radius: 12px; background: #f8fafc; color: #4a5568; font-size: .92rem; white-space: pre-wrap; }
+        .controls-row, .inline-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+        .inline-row { justify-content: flex-start; align-items: end; }
+        .inline-row .form-group { flex: 1; min-width: 260px; margin-bottom: 0; }
+        pre.result { background: #1a202c; color: #e2e8f0; padding: 14px; border-radius: 12px; overflow-x: auto; margin-top: 12px; display: none; }
+        @media (max-width: 768px) { .container { padding: 16px; } .controls-row, .domain-item { flex-direction: column; align-items: stretch; } .domain-actions { justify-content: flex-start; } }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛠️ 自定义域名管理后台</h1>
-            <p>管理和配置自定义域名，优化访问性能</p>
+            <div class="header-top">
+                <div>
+                    <h1>🛠️ 自定义域名管理后台</h1>
+                    <p>管理和配置自定义域名，优化访问性能</p>
+                    <p class="muted" id="cache-summary">缓存状态加载中...</p>
+                </div>
+                <div>
+                    <div class="user-pill">当前用户：${username}</div>
+                    <form class="logout-form" method="POST" action="/admin/logout"><button type="submit">退出登录</button></form>
+                </div>
+            </div>
         </div>
 
         <div id="alert-container"></div>
 
-        <!-- 统计信息 -->
         <div class="stats">
-            <div class="stat-card">
-                <div class="stat-number" id="total-domains">-</div>
-                <div class="stat-label">总域名数</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="github-domains">-</div>
-                <div class="stat-label">GitHub 域名</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="custom-domains">-</div>
-                <div class="stat-label">自定义域名</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number" id="resolved-domains">-</div>
-                <div class="stat-label">已解析域名</div>
-            </div>
+            <div class="stat-card"><div class="stat-number" id="total-domains">-</div><div class="stat-label">总域名数</div></div>
+            <div class="stat-card"><div class="stat-number" id="github-domains">-</div><div class="stat-label">GitHub 域名</div></div>
+            <div class="stat-card"><div class="stat-number" id="custom-domains">-</div><div class="stat-label">自定义域名</div></div>
+            <div class="stat-card"><div class="stat-number" id="resolved-domains">-</div><div class="stat-label">已解析域名</div></div>
         </div>
 
-        <!-- 批量添加域名 -->
+        <div class="card">
+            <h3>📊 服务状态</h3>
+            <div class="status-grid" id="status-grid">
+                <div class="status-card"><div class="status-value">加载中...</div><div class="status-label">Status</div></div>
+            </div>
+            <button class="btn btn-info" onclick="loadStatus()">🔄 刷新状态</button>
+        </div>
+
+        <div class="card">
+            <h3>🔎 单个域名测试解析</h3>
+            <div class="inline-row">
+                <div class="form-group"><label for="test-domain">域名</label><input id="test-domain" placeholder="example.com"></div>
+                <button class="btn btn-info" onclick="testDomain()">开始测试</button>
+            </div>
+            <pre class="result" id="test-result"></pre>
+        </div>
+
         <div class="card">
             <h3>📝 批量管理域名</h3>
             <div class="form-group">
                 <label for="batch-domains">域名列表 (每行一个，格式: 域名|描述):</label>
                 <textarea id="batch-domains" class="batch-input" placeholder="example1.com|第一个域名&#10;example2.com|第二个域名&#10;example3.com"></textarea>
             </div>
+            <div class="preview" id="batch-preview">输入域名后会在这里显示校验预览。</div>
             <button class="btn btn-primary" onclick="batchAddDomains()">📥 批量添加</button>
         </div>
 
-        <!-- 域名列表 -->
         <div class="card">
             <h3>📋 域名管理</h3>
             <div class="controls-row">
-                <div class="controls-left">
+                <div>
                     <button class="btn btn-success" onclick="loadDomains()">🔄 刷新列表</button>
+                    <button class="btn btn-info" onclick="exportDomains()">📤 导出 JSON</button>
                 </div>
                 <button class="btn btn-danger" onclick="clearAllCustomDomains()">🗑️ 清空自定义域名</button>
             </div>
-            <div class="domain-list" id="domain-list">
-                <p>加载中...</p>
-            </div>
+            <div class="domain-list" id="domain-list"><p>加载中...</p></div>
         </div>
     </div>
 
     <script>
-        // 显示通知
+        const domainPattern = /^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+        const formatTime = (value) => value ? new Date(value).toLocaleString() : '无';
+        const formatJson = (value) => JSON.stringify(value, null, 2);
+
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alert-container');
             const alert = document.createElement('div');
             alert.className = 'alert alert-' + type;
-            alert.innerHTML = '<span>' + message + '</span>';
+            alert.innerHTML = '<span>' + escapeHtml(message) + '</span>';
             container.appendChild(alert);
-            setTimeout(() => alert.remove(), 5000);
+            setTimeout(() => alert.remove(), 6000);
         }
 
-        // 加载统计信息
+        async function parseJsonResponse(response) {
+            const text = await response.text();
+            try { return text ? JSON.parse(text) : {}; } catch { return { error: text || response.statusText }; }
+        }
+
+        async function loadStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const status = await parseJsonResponse(response);
+                if (!response.ok) throw new Error(status.error || '状态接口请求失败');
+                const cache = status.cache || {};
+                document.getElementById('cache-summary').textContent = cache.cached
+                    ? '缓存：' + (cache.isValid ? '有效' : '已过期') + '｜上次刷新：' + formatTime(cache.lastUpdated) + '｜年龄：' + (cache.ageMinutes ?? '-') + ' 分钟'
+                    : '缓存：未找到缓存数据';
+                document.getElementById('status-grid').innerHTML = [
+                    ['登录用户', status.user?.username || '-'],
+                    ['Worker 版本', status.worker?.version || '-'],
+                    ['Commit', status.worker?.commit || '-'],
+                    ['KV 可读写', status.kv?.ok ? '正常 (' + status.kv.latencyMs + 'ms)' : '异常'],
+                    ['Hosts 条数', status.hosts?.count ?? 0],
+                    ['自定义域名数', status.customDomains?.count ?? 0],
+                    ['最近刷新', formatTime(cache.lastUpdated)],
+                    ['缓存年龄', cache.ageMinutes == null ? '-' : cache.ageMinutes + ' 分钟'],
+                    ['更新次数/版本', (cache.updateCount ?? 0) + ' / ' + (cache.version || 'unknown')]
+                ].map(([label, value]) => '<div class="status-card"><div class="status-value">' + escapeHtml(value) + '</div><div class="status-label">' + escapeHtml(label) + '</div></div>').join('');
+            } catch (error) {
+                showAlert('加载状态失败: ' + error.message, 'error');
+            }
+        }
+
         async function loadStats() {
             try {
                 const response = await fetch('/hosts.json');
                 const data = await response.json();
-                document.getElementById('total-domains').textContent = data.total;
+                document.getElementById('total-domains').textContent = data.total || 0;
                 document.getElementById('github-domains').textContent = data.github?.length || 0;
                 document.getElementById('custom-domains').textContent = data.custom?.length || 0;
-                document.getElementById('resolved-domains').textContent = data.custom?.length || 0;
-            } catch (error) {
-                console.error('加载统计信息失败:', error);
-            }
+                document.getElementById('resolved-domains').textContent = data.entries?.length || 0;
+            } catch (error) { console.error('加载统计信息失败:', error); }
         }
 
-        // 加载域名列表
         async function loadDomains() {
             const container = document.getElementById('domain-list');
-            if (!container) {
-                console.error('找不到 domain-list 容器');
-                return;
-            }
-            
             try {
-                console.log('开始加载域名列表');
-                const response = await fetch('/api/custom-domains', {
-                });
-                
-                console.log('API响应状态:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error('API请求失败: ' + response.status + ' ' + response.statusText);
-                }
-                
-                const domainsData = await response.json();
-                console.log('获取到的域名数据:', domainsData);
-                
-                // 将对象转换为数组
-                let domains = [];
-                if (Array.isArray(domainsData)) {
-                    domains = domainsData;
-                } else if (typeof domainsData === 'object' && domainsData !== null) {
-                    domains = Object.entries(domainsData).map(([domain, info]) => ({
-                        domain,
-                        ...info
-                    }));
-                }
-                
+                const response = await fetch('/api/custom-domains');
+                const domainsData = await parseJsonResponse(response);
+                if (!response.ok) throw new Error(domainsData.error || response.statusText);
+                let domains = Array.isArray(domainsData) ? domainsData : Object.entries(domainsData || {}).map(([domain, info]) => ({ domain, ...info }));
                 if (domains.length === 0) {
-                    container.innerHTML = '<p style="text-align: center; color: #718096; padding: 40px;">暂无自定义域名</p>';
+                    container.innerHTML = '<p style="text-align:center;color:#718096;padding:40px;">暂无自定义域名</p>';
                     return;
                 }
-
-                container.innerHTML = domains.map(domain => {
-                    // 安全地处理时间戳
-                    let timeStr = '未知时间';
-                    const timestamp = domain.timestamp || domain.addedAt;
-                    if (timestamp) {
-                        try {
-                            const date = new Date(timestamp);
-                            if (!isNaN(date.getTime())) {
-                                timeStr = date.toLocaleString();
-                            }
-                        } catch (e) {
-                            timeStr = '无效时间';
-                        }
-                    }
-                    
-                    return '<div class="domain-item">' +
-                        '<div class="domain-info">' +
-                            '<strong>' + domain.domain + '</strong>' +
-                            (domain.description ? '<br><small>' + domain.description + '</small>' : '') +
-                            '<br><small>IP: ' + (domain.ip || '未解析') + ' | 添加时间: ' + timeStr + '</small>' +
-                        '</div>' +
-                        '<div class="domain-actions">' +
-                            '<button class="btn btn-success btn-small" onclick="optimizeDomain(\\'' + domain.domain + '\\')">🚀 优选</button>' +
-                            '<button class="btn btn-danger btn-small" onclick="removeDomain(\\'' + domain.domain + '\\')">🗑️ 删除</button>' +
-                        '</div>' +
-                    '</div>';
+                container.innerHTML = domains.map(item => {
+                    const domain = escapeHtml(item.domain);
+                    return '<div class="domain-item"><div class="domain-info"><strong>' + domain + '</strong>' +
+                        (item.description ? '<br><small>' + escapeHtml(item.description) + '</small>' : '') +
+                        '<br><small>IP: ' + escapeHtml(item.ip || '未解析') + ' | 添加时间: ' + escapeHtml(formatTime(item.timestamp || item.addedAt)) + '</small></div>' +
+                        '<div class="domain-actions"><button class="btn btn-info btn-small" onclick="testDomain(\'' + domain + '\')">🔎 测试</button>' +
+                        '<button class="btn btn-success btn-small" onclick="optimizeDomain(\'' + domain + '\')">🚀 优选</button>' +
+                        '<button class="btn btn-danger btn-small" onclick="removeDomain(\'' + domain + '\')">🗑️ 删除</button></div></div>';
                 }).join('');
             } catch (error) {
-                console.error('加载域名列表失败:', error);
-                container.innerHTML = '<p style="text-align: center; color: #e53e3e; padding: 40px;">加载失败: ' + error.message + '</p>';
+                container.innerHTML = '<p style="text-align:center;color:#e53e3e;padding:40px;">加载失败: ' + escapeHtml(error.message) + '</p>';
                 showAlert('加载域名列表失败: ' + error.message, 'error');
             }
         }
 
-        // 批量添加域名
-        async function batchAddDomains() {
+        function parseBatchInput() {
             const input = document.getElementById('batch-domains').value.trim();
-            if (!input) {
-                showAlert('请输入域名列表', 'error');
-                return;
-            }
-
-            const lines = input.split('\\n').filter(line => line.trim());
-            const domains = lines.map(line => {
+            const seen = new Set();
+            const valid = [], invalid = [], duplicates = [];
+            input.split('\n').map(line => line.trim()).filter(Boolean).forEach((line, index) => {
                 const parts = line.split('|');
-                return {
-                    domain: parts[0]?.trim(),
-                    description: parts[1]?.trim() || ''
-                };
-            }).filter(item => item.domain);
-
-            if (domains.length === 0) {
-                showAlert('没有有效的域名', 'error');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/custom-domains/batch', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ domains })
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    showAlert('批量操作完成: 成功 ' + result.added + ' 个，失败 ' + result.failed + ' 个');
-                    if (result.errors.length > 0) {
-                        console.log('失败的域名:', result.errors);
-                    }
-                    document.getElementById('batch-domains').value = '';
-                    loadDomains();
-                    loadStats();
-                } else {
-                    showAlert(result.error || '批量添加失败', 'error');
-                }
-            } catch (error) {
-                showAlert('批量添加失败: ' + error.message, 'error');
-            }
+                const domain = (parts[0] || '').trim().toLowerCase();
+                const description = (parts.slice(1).join('|') || '').trim();
+                if (!domainPattern.test(domain)) invalid.push({ line: index + 1, value: line, reason: '域名格式不正确' });
+                else if (seen.has(domain)) duplicates.push({ line: index + 1, domain });
+                else { seen.add(domain); valid.push({ domain, description }); }
+            });
+            return { valid, invalid, duplicates };
         }
 
-        // 删除域名
+        function updateBatchPreview() {
+            const { valid, invalid, duplicates } = parseBatchInput();
+            document.getElementById('batch-preview').textContent = '有效: ' + valid.length + ' 个；无效: ' + invalid.length + ' 个；重复: ' + duplicates.length + ' 个' +
+                (invalid.length ? '\n无效行: ' + invalid.slice(0, 5).map(i => '#' + i.line + ' ' + i.value).join('；') : '') +
+                (duplicates.length ? '\n重复行: ' + duplicates.slice(0, 5).map(i => '#' + i.line + ' ' + i.domain).join('；') : '');
+        }
+
+        async function batchAddDomains() {
+            const { valid, invalid, duplicates } = parseBatchInput();
+            updateBatchPreview();
+            if (valid.length === 0) return showAlert('没有可导入的有效域名，请检查预览提示。', 'error');
+            if ((invalid.length || duplicates.length) && !confirm('发现 ' + invalid.length + ' 个无效、' + duplicates.length + ' 个重复，将仅导入 ' + valid.length + ' 个有效域名。继续吗？')) return;
+            try {
+                const response = await fetch('/api/custom-domains/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domains: valid }) });
+                const result = await parseJsonResponse(response);
+                if (response.ok) {
+                    showAlert('批量操作完成: 成功/更新 ' + result.added + ' 个，失败 ' + result.failed + ' 个' + (result.errors?.length ? '；请查看控制台详情' : ''));
+                    if (result.errors?.length) console.warn('批量失败详情:', result.errors);
+                    document.getElementById('batch-domains').value = '';
+                    updateBatchPreview(); loadDomains(); loadStats(); loadStatus();
+                } else showAlert(result.error || '批量添加失败', 'error');
+            } catch (error) { showAlert('批量添加失败: ' + error.message, 'error'); }
+        }
+
+        async function testDomain(domainArg) {
+            const input = document.getElementById('test-domain');
+            const domain = (domainArg || input.value || '').trim().toLowerCase();
+            const resultBox = document.getElementById('test-result');
+            if (!domainPattern.test(domain)) return showAlert('请输入有效域名，例如 example.com', 'error');
+            input.value = domain;
+            resultBox.style.display = 'block'; resultBox.textContent = '解析中...';
+            try {
+                const response = await fetch('/api/custom-domains/test?domain=' + encodeURIComponent(domain));
+                const result = await parseJsonResponse(response);
+                resultBox.textContent = formatJson(result);
+                if (!response.ok) showAlert(result.error || '测试失败', 'error');
+            } catch (error) { resultBox.textContent = error.message; showAlert('测试失败: ' + error.message, 'error'); }
+        }
+
         async function removeDomain(domain) {
             if (!confirm('确定要删除域名 ' + domain + ' 吗？')) return;
-
+            if (prompt('二次确认：请输入 DELETE 删除 ' + domain) !== 'DELETE') return showAlert('已取消删除', 'error');
             try {
-                const response = await fetch('/api/custom-domains/' + encodeURIComponent(domain), {
-                    method: 'DELETE',
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    showAlert('域名 ' + domain + ' 删除成功');
-                    loadDomains();
-                    loadStats();
-                } else {
-                    showAlert(result.error || '删除失败', 'error');
-                }
-            } catch (error) {
-                showAlert('删除域名失败: ' + error.message, 'error');
-            }
+                const response = await fetch('/api/custom-domains/' + encodeURIComponent(domain), { method: 'DELETE' });
+                const result = await parseJsonResponse(response);
+                if (response.ok) { showAlert('域名 ' + domain + ' 删除成功'); loadDomains(); loadStats(); loadStatus(); }
+                else showAlert(result.error || '删除失败', 'error');
+            } catch (error) { showAlert('删除域名失败: ' + error.message, 'error'); }
         }
 
-        // 优选域名
         async function optimizeDomain(domain) {
             showAlert('正在优选域名 ' + domain + '...');
-            
             try {
-                const response = await fetch('/api/optimize/' + encodeURIComponent(domain), {
-                    method: 'POST',
-                });
-
-                const result = await response.json();
-                if (response.ok) {
-                    showAlert('域名 ' + domain + ' 优选完成，最佳IP: ' + result.bestIp + '，响应时间: ' + result.responseTime + 'ms');
-                    loadDomains();
-                } else {
-                    showAlert(result.error || '优选失败', 'error');
-                }
-            } catch (error) {
-                showAlert('优选域名失败: ' + error.message, 'error');
-            }
+                const response = await fetch('/api/optimize/' + encodeURIComponent(domain), { method: 'POST' });
+                const result = await parseJsonResponse(response);
+                if (response.ok) { showAlert('域名 ' + domain + ' 优选完成，IP: ' + (result.bestIp || result.ip || '未知')); loadDomains(); loadStatus(); }
+                else showAlert(result.error || '优选失败', 'error');
+            } catch (error) { showAlert('优选域名失败: ' + error.message, 'error'); }
         }
 
-        // 清空所有自定义域名
+        async function exportDomains() {
+            try {
+                const response = await fetch('/api/custom-domains/export');
+                const result = await parseJsonResponse(response);
+                if (!response.ok) throw new Error(result.error || '导出失败');
+                const blob = new Blob([formatJson(result)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url; a.download = 'custom-domains-' + Date.now() + '.json'; a.click(); URL.revokeObjectURL(url);
+                showAlert('已导出 ' + (result.count || 0) + ' 个自定义域名');
+            } catch (error) { showAlert('导出失败: ' + error.message, 'error'); }
+        }
+
         async function clearAllCustomDomains() {
             if (!confirm('确定要清空所有自定义域名吗？此操作不可恢复！')) return;
-
+            if (prompt('二次确认：请输入 CLEAR 确认清空所有自定义域名') !== 'CLEAR') return showAlert('已取消清空', 'error');
             try {
-                const response = await fetch('/api/custom-domains', {
-                    method: 'DELETE',
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    showAlert('清空完成，删除了 ' + result.count + ' 个域名');
-                } else {
-                    const error = await response.json();
-                    showAlert(error.error || '清空操作失败', 'error');
-                }
-                
-                loadDomains();
-                loadStats();
-            } catch (error) {
-                showAlert('清空操作失败: ' + error.message, 'error');
-            }
+                const response = await fetch('/api/custom-domains', { method: 'DELETE' });
+                const result = await parseJsonResponse(response);
+                if (response.ok) showAlert('清空完成，删除了 ' + result.count + ' 个域名');
+                else showAlert(result.error || '清空操作失败', 'error');
+                loadDomains(); loadStats(); loadStatus();
+            } catch (error) { showAlert('清空操作失败: ' + error.message, 'error'); }
         }
 
-        // 页面加载时初始化
         document.addEventListener('DOMContentLoaded', () => {
-            loadStats();
-            loadDomains();
-        });
-
-        // 回车键提交
-        document.getElementById('batch-domains').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                batchAddDomains();
-            }
+            loadStats(); loadStatus(); loadDomains(); updateBatchPreview();
+            document.getElementById('batch-domains').addEventListener('input', updateBatchPreview);
+            document.getElementById('batch-domains').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) batchAddDomains(); });
+            document.getElementById('test-domain').addEventListener('keydown', (e) => { if (e.key === 'Enter') testDomain(); });
         });
     </script>
 </body>
@@ -1006,20 +894,21 @@ app.post("/api/custom-domains", async (c) => {
     }
 
     // 简单的域名格式验证
-    if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
+    const normalizedDomain = normalizeDomain(domain)
+    if (!DOMAIN_PATTERN.test(normalizedDomain)) {
       return c.json({ error: "Invalid domain format" }, 400)
     }
 
-    const result = await addCustomDomain(c.env, domain)
+    const result = await addCustomDomain(c.env, normalizedDomain)
 
     if (result) {
       const message = result.isUpdate 
-        ? `域名 ${domain} 已存在，已更新其配置` 
-        : `域名 ${domain} 添加成功`
+        ? `域名 ${normalizedDomain} 已存在，已更新其配置`
+        : `域名 ${normalizedDomain} 添加成功`
         
       return c.json({ 
         message, 
-        domain, 
+        domain: normalizedDomain,
         result,
         isUpdate: result.isUpdate 
       })
@@ -1053,16 +942,17 @@ app.post("/api/custom-domains/batch", async (c) => {
       }
 
       // 简单的域名格式验证
-      if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
+      const normalizedDomain = normalizeDomain(domain)
+      if (!DOMAIN_PATTERN.test(normalizedDomain)) {
         errors.push({ domain, error: "Invalid domain format" })
         continue
       }
 
       try {
-        const result = await addCustomDomain(c.env, domain)
+        const result = await addCustomDomain(c.env, normalizedDomain)
         if (result) {
           const status = result.isUpdate ? "updated" : "success"
-          results.push({ domain, status })
+          results.push({ domain: normalizedDomain, status })
         } else {
           errors.push({ domain, error: "Failed to add domain" })
         }
@@ -1080,6 +970,55 @@ app.post("/api/custom-domains/batch", async (c) => {
     })
   } catch (error) {
     return c.json({ error: "Invalid request body" }, 400)
+  }
+})
+
+app.get("/api/custom-domains/export", async (c) => {
+  try {
+    const customDomains = await getCustomDomains(c.env)
+    c.header("Content-Disposition", `attachment; filename="custom-domains-${Date.now()}.json"`)
+    return c.json({
+      exportedAt: new Date().toISOString(),
+      count: customDomains.length,
+      domains: customDomains
+    })
+  } catch (error) {
+    console.error("Error exporting custom domains:", error)
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
+})
+
+app.get("/api/custom-domains/test", async (c) => {
+  const domain = normalizeDomain(c.req.query("domain") || "")
+  if (!DOMAIN_PATTERN.test(domain)) {
+    return c.json({ error: "Valid domain query parameter is required" }, 400)
+  }
+
+  const startedAt = Date.now()
+  try {
+    const [resolvedIp, customDomains] = await Promise.all([
+      fetchIPFromMultipleDNS(domain),
+      getCustomDomains(c.env)
+    ])
+    const storedInfo = customDomains.find(cd => cd.domain === domain)
+
+    return c.json({
+      domain,
+      resolvedIp,
+      standardResolution: resolvedIp || "解析失败",
+      success: Boolean(resolvedIp),
+      durationMs: Date.now() - startedAt,
+      storedInfo: storedInfo || null,
+      timestamp: new Date().toISOString()
+    }, resolvedIp ? 200 : 404)
+  } catch (error) {
+    return c.json({
+      domain,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - startedAt,
+      timestamp: new Date().toISOString()
+    }, 500)
   }
 })
 
@@ -1413,36 +1352,19 @@ app.get("/debug", async (c) => {
   }
 })
 
+app.get("/api/status", async (c) => {
+  try {
+    return c.json(await buildAdminStatus(c))
+  } catch (error) {
+    console.error("Error building status:", error)
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
+  }
+})
+
 // 缓存管理 API - 参考 TinsFox/github-hosts 最佳实践
 app.get("/api/cache/status", async (c) => {
   try {
-    const kvData = (await c.env.custom_hosts.get("domain_data", {
-      type: "json",
-    })) as any
-
-    if (!kvData) {
-      return c.json({
-        cached: false,
-        message: "No cache data found"
-      })
-    }
-
-    const lastUpdated = new Date(kvData.lastUpdated)
-    const now = new Date()
-    const ageMinutes = Math.round((now.getTime() - lastUpdated.getTime()) / 60000)
-    const cacheValidTime = 6 * 60 // 6小时
-    const isValid = ageMinutes < cacheValidTime
-
-    return c.json({
-      cached: true,
-      lastUpdated: kvData.lastUpdated,
-      ageMinutes,
-      isValid,
-      validUntilMinutes: Math.max(0, cacheValidTime - ageMinutes),
-      domainCount: Object.keys(kvData.domain_data || {}).length,
-      updateCount: kvData.updateCount || 0,
-      version: kvData.version || "unknown"
-    })
+    return c.json(await getCacheStatusSnapshot(c.env))
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 500)
   }
