@@ -1,18 +1,31 @@
 name = "custom-hosts-optimizer"
 main = "src/index.ts"
-compatibility_date = "2024-10-28"
+compatibility_date = "2026-11-04"
 compatibility_flags = ["nodejs_compat"]
-assets = { directory = "public" }
+workers_dev = true
+routes = [{ pattern = "hosts.violin47.dpdns.org", custom_domain = true }]
 
-# KV 数据库绑定 - 安全配置说明：
-# 方式1：GitHub Secrets（推荐） - 在仓库 Secrets 中设置 KV_NAMESPACE_ID
-# 方式2：本地环境变量 - 在 .dev.vars 文件中设置 KV_NAMESPACE_ID=your-id
-# 方式3：直接替换（仅私有仓库） - 将 YOUR_KV_NAMESPACE_ID 替换为实际 ID
+[assets]
+directory = "public"
+binding = "ASSETS"
+run_worker_first = true
+html_handling = "none"
+
 [[kv_namespaces]]
 binding = "custom_hosts"
-id = "YOUR_KV_NAMESPACE_ID"  # 保持不变，由 wrangler 或 GitHub Actions 自动处理
-preview_id = "YOUR_KV_NAMESPACE_ID"  # 预览环境 KV ID
+id = "YOUR_KV_NAMESPACE_ID"
 
-# 定时任务配置 - 每小时更新一次 hosts
+[[durable_objects.bindings]]
+name = "COORDINATOR"
+class_name = "HostsCoordinator"
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["HostsCoordinator"]
+
 [triggers]
-crons = ["0 */1 * * *"]
+crons = ["0 * * * *"]
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1

@@ -1,403 +1,68 @@
-name: Deploy to Cloudflare Workers - Main
-
+name: Validate and deploy
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch:  # 允许手动触发
-
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
-    name: Deploy
-    environment: production  # 添加环境保护
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm build
+  deploy:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
     env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+          node-version: "24"
+      - uses: pnpm/action-setup@v4
         with:
-          version: 10
-
-      - name: Install dependencies
+          version: 11.25.0
+      - run: pnpm install --frozen-lockfile
+      - name: Select authentication
         run: |
-          # 在 CI 环境中使用 --no-frozen-lockfile 来允许更新锁文件
-          pnpm install --no-frozen-lockfile
-          # 安装 jq 用于 JSON 解析
-          sudo apt-get update && sudo apt-get install -y jq || echo "⚠️ jq 安装失败，将使用备用解析方法"
-
-      - name: Verify Cloudflare Credentials
-        run: |
-          echo "🔍 验证 Cloudflare 凭据..."
-          
-          # 检查必需的环境变量
-          if [ -z "$CLOUDFLARE_API_KEY" ]; then
-            echo "❌ CLOUDFLARE_API_KEY 环境变量未设置"
-            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_API_KEY"
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo 'CLOUDFLARE_API_KEY=' >> "$GITHUB_ENV"
+            echo 'CLOUDFLARE_EMAIL=' >> "$GITHUB_ENV"
+          elif [ -z "$CLOUDFLARE_API_KEY" ] || [ -z "$CLOUDFLARE_EMAIL" ]; then
+            echo 'Cloudflare credentials are missing'
             exit 1
           fi
-          
-          if [ -z "$CLOUDFLARE_EMAIL" ]; then
-            echo "❌ CLOUDFLARE_EMAIL 环境变量未设置"
-            echo "请在 GitHub Secrets 中添加 CLOUDFLARE_EMAIL"
-            exit 1
-          fi
-          
-          echo "✅ CLOUDFLARE_API_KEY 已设置"
-          echo "✅ CLOUDFLARE_EMAIL 已设置"
-          
-          # wrangler whoami 在部分 wrangler v4 + Global API Key 场景下会误报未登录；
-          # 部署/secret put 才是真实验权点，这里只做非阻塞预检。
-          echo "👤 非阻塞验证 Cloudflare 用户信息..."
-          if USER_INFO=$(pnpm exec wrangler whoami 2>/dev/null); then
-            echo "✅ Cloudflare 凭据预检通过"
-            echo "🔐 用户身份验证成功（详细信息已隐藏）"
-          else
-            echo "⚠️ wrangler whoami 预检未通过；继续进入部署阶段，由 deploy/secret put 做最终验权"
-          fi
-
-      - name: Detect existing deployment configuration
-        run: |
-          echo "🔍 检测现有部署配置..."
-          
-          # 检查是否已经有 Worker 部署
-          echo "📋 检查现有 Workers..."
-          
-          # 使用更安全的方式获取 Worker 列表
-          if ! WORKER_LIST=$(pnpm exec wrangler list --format json 2>/dev/null); then
-            echo "⚠️ 无法获取 Worker 列表，假设为首次部署"
-            WORKER_LIST="[]"
-          fi
-          
-          # 从 wrangler.toml 获取预期的 Worker 名称
-          if ! EXPECTED_WORKER_NAME=$(grep '^name = ' wrangler.toml | head -1 | sed 's/^name = "\([^"]*\)"/\1/'); then
-            echo "❌ 无法从 wrangler.toml 获取 Worker 名称"
-            exit 1
-          fi
-          
-          echo "📝 预期的 Worker 名称: $EXPECTED_WORKER_NAME"
-          
-          # 检查 Worker 是否已存在（更安全的检查方式）
-          if echo "$WORKER_LIST" | grep -q "\"$EXPECTED_WORKER_NAME\"" 2>/dev/null; then
-            echo "✅ 发现已存在的 Worker: $EXPECTED_WORKER_NAME"
-            echo "WORKER_EXISTS=true" >> $GITHUB_ENV
-            echo "DEPLOYMENT_MODE=update" >> $GITHUB_ENV
-            
-            # 尝试获取 Worker 的详细信息
-            echo "📊 获取 Worker 详细信息..."
-            if ! pnpm exec wrangler status 2>/dev/null; then
-              echo "⚠️ 无法获取 Worker 状态，但将继续部署"
-            fi
-            
-          else
-            echo "🆕 未发现现有 Worker，将进行首次部署"
-            echo "WORKER_EXISTS=false" >> $GITHUB_ENV
-            echo "DEPLOYMENT_MODE=initial" >> $GITHUB_ENV
-          fi
-
-      - name: Smart configuration management
-        run: |
-          echo "🧠 智能配置管理 (模式: $DEPLOYMENT_MODE)..."
-          
-          # 优先使用 GitHub Secrets 中的 KV_NAMESPACE_ID（安全最佳实践）
-          if [ -n "${{ secrets.KV_NAMESPACE_ID }}" ]; then
-            echo "🔐 使用 GitHub Secrets 中的 KV_NAMESPACE_ID（推荐方式）"
-            KV_NAMESPACE_ID="${{ secrets.KV_NAMESPACE_ID }}"
-            
-            # 验证 KV 是否真实存在
-            echo "🔍 验证 KV 命名空间是否存在..."
-            
-            # 尝试多种方式获取 KV 列表
-            KV_LIST=""
-            if KV_LIST=$(pnpm exec wrangler kv namespace list --format json 2>/dev/null); then
-              echo "✅ 成功获取 KV 命名空间列表（JSON 格式）"
-            elif KV_LIST=$(pnpm exec wrangler kv namespace list 2>/dev/null); then
-              echo "✅ 成功获取 KV 命名空间列表（标准格式）"
-            else
-              echo "⚠️ 无法获取 KV 命名空间列表，但继续验证..."
-              # 尝试直接验证 KV 是否可用
-              if pnpm exec wrangler kv namespace validate "$KV_NAMESPACE_ID" 2>/dev/null; then
-                echo "✅ KV 命名空间直接验证成功"
-              else
-                echo "⚠️ 无法验证 KV 命名空间，但将继续使用设置的 ID"
-              fi
-              KV_LIST="validation_skipped"
-            fi
-            
-            # 验证 KV ID（如果成功获取了列表）
-            if [ "$KV_LIST" != "validation_skipped" ] && [ -n "$KV_LIST" ]; then
-              if echo "$KV_LIST" | grep -q "$KV_NAMESPACE_ID" 2>/dev/null; then
-                echo "✅ KV 命名空间验证成功: $KV_NAMESPACE_ID"
-              else
-                echo "⚠️ 在列表中未找到指定的 KV ID，但将继续使用"
-                echo "🔍 这可能是权限问题或 KV 在不同区域"
-              fi
-            fi
-            
-            # 更新配置文件以使用 Secret 中的 KV ID
-            sed -i.bak "s/id = \"[^\"]*\"/id = \"$KV_NAMESPACE_ID\"/" wrangler.toml
-            sed -i.bak "s/preview_id = \"[^\"]*\"/preview_id = \"$KV_NAMESPACE_ID\"/" wrangler.toml
-            echo "CONFIG_UPDATED=true" >> $GITHUB_ENV
-            echo "CONFIG_SOURCE=github_secrets" >> $GITHUB_ENV
-            
-          else
-            echo "⚠️ GitHub Secrets 中未设置 KV_NAMESPACE_ID，使用备用配置方案"
-            
-            if [ "$DEPLOYMENT_MODE" = "update" ]; then
-              echo "🔄 更新模式: 基于现有部署进行热更新"
-              
-              # 从现有部署中学习配置
-              echo "📚 从现有部署学习配置..."
-              
-              # 安全地获取当前配置的 KV ID
-              if ! CURRENT_KV_ID=$(grep -A 10 '\[\[kv_namespaces\]\]' wrangler.toml | grep 'id = ' | head -1 | sed 's/.*id = "\([^"]*\)".*/\1/'); then
-                echo "❌ 无法从配置文件获取 KV ID"
-                exit 1
-              fi
-              
-              if [ -n "$CURRENT_KV_ID" ] && [ "$CURRENT_KV_ID" != "YOUR_KV_NAMESPACE_ID" ] && [ "$CURRENT_KV_ID" != "" ]; then
-                echo "📋 使用配置文件中的 KV ID: $CURRENT_KV_ID"
-                
-                # 验证 KV 是否真实存在（使用改进的方法）
-                echo "🔍 验证配置文件中的 KV ID..."
-                KV_LIST=""
-                if KV_LIST=$(pnpm exec wrangler kv namespace list --format json 2>/dev/null); then
-                  echo "✅ 成功获取 KV 命名空间列表"
-                elif KV_LIST=$(pnpm exec wrangler kv namespace list 2>/dev/null); then
-                  echo "✅ 成功获取 KV 命名空间列表（标准格式）"
-                else
-                  echo "⚠️ 无法获取 KV 命名空间列表，跳过验证直接使用"
-                  KV_LIST="validation_skipped"
-                fi
-                
-                if [ "$KV_LIST" != "validation_skipped" ] && [ -n "$KV_LIST" ]; then
-                  if echo "$KV_LIST" | grep -q "$CURRENT_KV_ID" 2>/dev/null; then
-                    echo "✅ KV 命名空间验证成功"
-                  else
-                    echo "⚠️ 在列表中未找到 KV ID，但将继续使用"
-                  fi
-                fi
-                
-                KV_NAMESPACE_ID="$CURRENT_KV_ID"
-                echo "CONFIG_SOURCE=existing_config" >> $GITHUB_ENV
-              else
-                echo "❌ 配置文件中没有有效的 KV ID，请设置 KV_NAMESPACE_ID Secret"
-                exit 1
-              fi
-              
-            else
-              echo "🆕 初始部署模式: 需要 KV_NAMESPACE_ID"
-              echo "❌ 首次部署必须在 GitHub Secrets 中设置 KV_NAMESPACE_ID"
-              echo "📋 请按以下步骤操作："
-              echo "1. 在 Cloudflare Dashboard 中创建 KV 命名空间"
-              echo "2. 复制 KV 命名空间 ID"
-              echo "3. 在 GitHub 仓库 Settings > Secrets 中添加 KV_NAMESPACE_ID"
-              echo "🔗 Cloudflare KV: https://dash.cloudflare.com/[account-id]/workers/kv/namespaces"
-              exit 1
-            fi
-          fi
-          
-          # 记录最终配置
-          echo "KV_NAMESPACE_ID=$KV_NAMESPACE_ID" >> $GITHUB_ENV
-          echo "KV_NAMESPACE_NAME=custom_hosts" >> $GITHUB_ENV
-          
-          # 创建部署信息文件（隐藏敏感信息）
-          cat > deployment-info.json << EOF
-          {
-            "deployment_mode": "$DEPLOYMENT_MODE",
-            "worker_exists": "$WORKER_EXISTS",
-            "namespace_name": "custom_hosts",
-            "binding_name": "custom_hosts",
-            "kv_namespace_id": "[HIDDEN_FOR_SECURITY]",
-            "config_source": "${CONFIG_SOURCE:-unknown}",
-            "config_updated": "${CONFIG_UPDATED:-false}",
-            "deployment_time": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "run_number": "${{ github.run_number }}",
-            "security_note": "KV_NAMESPACE_ID 使用安全的 GitHub Secrets 管理，敏感信息已隐藏"
-          }
-          EOF
-          
-          echo "📄 部署信息已记录"
-          
-          # 验证最终配置
-          echo "📄 验证最终配置:"
-          if [ -n "$KV_NAMESPACE_ID" ]; then
-            echo "✅ KV 命名空间 ID: [已设置，ID 已隐藏保护隐私]"
-            echo "🔐 配置来源: ${CONFIG_SOURCE:-unknown}"
-          else
-            echo "❌ KV 命名空间 ID 为空"
-            exit 1
-          fi
-          
-          if grep -q 'binding = "custom_hosts"' wrangler.toml; then
-            echo "✅ KV 绑定配置正确"
-          else
-            echo "❌ KV 绑定配置异常"
-            cat wrangler.toml | grep -A 5 "kv_namespaces" || echo "无法找到 KV 配置"
-            exit 1
-          fi
-
-      - name: Deploy to Cloudflare Workers
-        run: |
-          echo "🚀 开始部署到 Cloudflare Workers..."
-          echo "📊 部署模式: $DEPLOYMENT_MODE"
-          echo "📊 使用 KV 命名空间: custom_hosts"
-          
-          # 根据部署模式显示不同信息
-          if [ "$DEPLOYMENT_MODE" = "update" ]; then
-            echo "🔄 执行热更新部署..."
-          else
-            echo "🆕 执行首次部署..."
-          fi
-          
-          # 在部署前验证配置
-          echo "🔍 部署前最终检查..."
-          if [ ! -f "wrangler.toml" ]; then
-            echo "❌ wrangler.toml 文件不存在"
-            exit 1
-          fi
-          
-          # 检查配置文件语法（隐藏输出避免泄露信息）
-          if pnpm exec wrangler config validate >/dev/null 2>&1; then
-            echo "✅ wrangler 配置验证通过"
-          else
-            echo "⚠️ wrangler 配置验证失败，但继续尝试部署"
-          fi
-          
-          # 执行部署
-          echo "🚀 开始执行部署..."
-          if pnpm run deploy; then
-            echo "✅ 部署成功！"
-            if [ "$DEPLOYMENT_MODE" = "update" ]; then
-              echo "🎉 Worker 热更新完成"
-            else
-              echo "🎉 Worker 首次部署完成"
-            fi
-          else
-            echo ""
-            echo "❌ 部署失败！"
-            echo "🔧 常见解决方案："
-            echo "1. 检查 Global API Key 是否正确"
-            echo "2. 确认邮箱地址与 Cloudflare 账户匹配"
-            echo "3. 确认 wrangler.toml 中的配置正确"
-            echo "4. 检查是否有足够的 Workers 订阅配额"
-            echo "5. 验证 KV 命名空间配置是否正确"
-            echo ""
-            echo "🔗 Cloudflare Dashboard: https://dash.cloudflare.com/"
-            echo "📄 当前部署信息:"
-            if [ -f "deployment-info.json" ]; then
-              cat deployment-info.json
-            fi
-            echo "📄 当前 wrangler.toml 配置（敏感信息已隐藏）:"
-            grep -v "id = " wrangler.toml | head -15 || echo "无法读取配置文件"
-            exit 1
-          fi
-          
-          # 部署后验证（隐藏详细信息）
-          echo "📊 部署后验证..."
-          if pnpm exec wrangler status >/dev/null 2>&1; then
-            echo "✅ Worker 状态正常"
-          else
-            echo "⚠️ 无法获取部署后状态，但部署命令成功"
-          fi
-
-      - name: Set Worker application secrets
-        run: |
-          echo "🔐 设置 Worker 应用 secrets..."
-
-          WORKER_NAME=$(grep '^name = ' wrangler.toml | sed 's/^name = "\([^"]*\)"/\1/')
-
-          if [ -z "$WORKER_NAME" ]; then
-            echo "❌ 无法获取 Worker 名称"
-            exit 1
-          fi
-
-          set_secret() {
-            local github_secret_name="$1"
-            local worker_secret_name="$2"
-            local value="$3"
-            if [ -n "$value" ]; then
-              echo "🔑 设置 $worker_secret_name..."
-              if printf '%s' "$value" | pnpm exec wrangler secret put "$worker_secret_name" --name "$WORKER_NAME" >/dev/null 2>&1; then
-                echo "✅ $worker_secret_name 设置完成"
-              else
-                echo "❌ $worker_secret_name 设置失败"
-                exit 1
-              fi
-            else
-              echo "⚠️ GitHub Secret $github_secret_name 未设置，跳过 $worker_secret_name"
-            fi
-          }
-
-          set_secret "ADMIN_USERNAME" "ADMIN_USERNAME" "${{ secrets.ADMIN_USERNAME }}"
-          set_secret "ADMIN_PASSWORD" "ADMIN_PASSWORD" "${{ secrets.ADMIN_PASSWORD }}"
-          set_secret "SESSION_SECRET" "SESSION_SECRET" "${{ secrets.SESSION_SECRET }}"
-          set_secret "API_TOKEN" "API_TOKEN" "${{ secrets.API_TOKEN }}"
-
-          # 兼容旧 Secret 名称：如果未设置 API_TOKEN 但设置了 WORKER_API_KEY，则写入新的 API_TOKEN。
-          if [ -z "${{ secrets.API_TOKEN }}" ] && [ -n "${{ secrets.WORKER_API_KEY }}" ]; then
-            set_secret "WORKER_API_KEY" "API_TOKEN" "${{ secrets.WORKER_API_KEY }}"
-          fi
-
-          echo "✅ Worker 应用 secrets 设置流程完成"
-
-      - name: Save deployment info
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-info
-          path: deployment-info.json
-          retention-days: 30
-
-      - name: Commit updated configuration (if changed)
-        if: env.CONFIG_UPDATED == 'true'
-        run: |
-          echo "📝 配置已更新，准备提交..."
-          
-          # 安全检查：确保不提交敏感信息
-          if grep -q "YOUR_KV_NAMESPACE_ID" wrangler.toml; then
-            echo "⚠️ 检测到配置文件中仍有占位符，跳过提交"
-            exit 0
-          fi
-          
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          # 安全地添加文件（只添加配置文件）
-          git add wrangler.toml
-          
-          # 构建提交消息
-          RUN_NUMBER="${{ github.run_number }}"
-          CURRENT_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
-          
-          # 创建提交消息（不包含敏感信息）
-          cat > commit_message.txt << EOF
-          chore: 自动更新部署配置 [安全提交]
-
-          部署模式: $DEPLOYMENT_MODE
-          配置来源: ${CONFIG_SOURCE:-unknown}
-          更新时间: $CURRENT_TIME
-          部署运行: #$RUN_NUMBER
-
-          注意: 敏感信息已通过 GitHub Secrets 安全管理
-          [skip ci]
-          EOF
-          
-          # 安全提交
-          if git diff --staged --quiet; then
-            echo "📝 没有配置变化需要提交"
-          else
-            git commit -F commit_message.txt || echo "提交失败，但不影响部署"
-            echo "✅ 配置已安全提交（敏感信息已保护）"
-          fi
-          
-          rm -f commit_message.txt
-          
-          echo "ℹ️ 配置已学习并更新，下次将使用学习到的配置进行热更新"
+      - run: node scripts/configure.mjs
+      - run: pnpm run deploy
+      - name: Preserve administrator credentials and synchronize application secrets
+        env:
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+          PROBE_TOKEN: ${{ secrets.PROBE_TOKEN }}
+        run: node scripts/secrets.mjs
+      - name: Verify actual deployment and refresh
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: node scripts/smoke.mjs

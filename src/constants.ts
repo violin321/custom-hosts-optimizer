@@ -39,46 +39,4 @@ export const GITHUB_URLS = [
   "vscode.dev",
   "education.github.com",
   "private-user-images.githubusercontent.com",
-]
-
-export const HOSTS_TEMPLATE = `# github hosts
-# 加速 GitHub 访问
-
-{content}
-
-# 数据更新时间：{updateTime}
-`
-
-export const GITHUB_API_BASE = "https://api.github.com"
-
-export const HOSTS_PATH = "hosts"
-
-interface DNSProvider {
-  name: string
-  url: (domain: string) => string
-  headers: Record<string, string>
-  type: "dns-json" | "html"
-}
-
-export const DNS_PROVIDERS: DNSProvider[] = [
-  {
-    name: "Cloudflare DNS",
-    url: (domain: string) => `https://1.1.1.1/dns-query?name=${domain}&type=A`,
-    headers: { Accept: "application/dns-json" },
-    type: "dns-json"
-  },
-  {
-    name: "Google DNS", 
-    url: (domain: string) => `https://dns.google/resolve?name=${domain}&type=A`,
-    headers: { Accept: "application/dns-json" },
-    type: "dns-json"
-  },
-  {
-    name: "IPAddress.com",
-    url: (domain: string) => `https://sites.ipaddress.com/${domain}`,
-    headers: { 
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    },
-    type: "html"
-  }
-]
+];

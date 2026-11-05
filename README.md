@@ -1,428 +1,55 @@
-<div align="center">
-  <img src="public/logo.svg" width="140" height="140" alt="优选自定义host logo">
-  <h1>优选自定义host</h1>
-  <p>自定义域名访问加速，智能 IP 优选解决访问慢的问题。基于 Cloudflare Workers 部署。</p>
+# Custom Hosts Optimizer 2
 
-  <p>
-    <a href="#项目声明">项目声明</a> •
-    <a href="#快速开始">快速开始</a> •
-    <a href="#特性">特性</a> •
-    <a href="#使用方法">使用方法</a> •
-    <a href="#自定义域名">自定义域名</a> •
-    <a href="#部署指南">部署指南</a> •
-    <a href="#故障排除">故障排除</a>
-  </p>
-</div>
+在 Cloudflare Workers 上管理域名到 IP 的映射，并发布 hosts、JSON、Clash YAML。DNS 查询得到候选 IP；家庭旁路由的真实 HTTPS 探测决定本地测速模式的选用结果。解析耗时与访问延迟分别记录。
 
-## 项目声明
+## 使用
 
-本项目基于以下开源项目进行AI智能魔改优化：
+- `/`：公开下载页，只读取已发布快照。
+- `/hosts`、`/hosts.json`、`/clash-hosts.yaml`：同一快照的三种导出，支持 ETag/304；`?custom=false` 仅导出内置域名。
+- `/admin/login`：独立管理员账号密码登录，管理入口 `/admin`。
+- `/health`：有效记录非空且最近成功检查在 24 小时内才返回 200。
 
-- 🔗 **[GitHub520](https://github.com/521xueweihan/GitHub520)** - GitHub访问加速项目
-- 🔗 **[github-hosts](https://github.com/TinsFox/github-hosts)** - GitHub hosts文件生成工具
+管理员账号来自 `ADMIN_USERNAME` / `ADMIN_PASSWORD`，与 Cloudflare 账号独立。会话有效 24 小时，HMAC 签名，Cookie 使用 HttpOnly、Secure、SameSite=Strict；账号密码变化后旧会话失效。同一来源 15 分钟最多 10 次登录尝试；会话写操作检查来源。管理 API 可使用 `Authorization: Bearer <API_TOKEN>`；不要把令牌放在 URL 或前端代码。
 
-### ✨ AI魔改特色
+## 更新与失败保护
 
-- 🤖 **AI驱动优化**：运用人工智能技术进行代码重构和功能增强
-- 🚀 **架构升级**：从传统脚本升级为现代化 Cloudflare Workers 架构
-- 🎯 **智能IP优选**：AI算法优化的IP选择策略，提升访问速度
-- 🔧 **自动化部署**：完整的CI/CD流程，支持一键部署
-- 🌐 **Web管理界面**：现代化的可视化管理后台
-- 📡 **RESTful API**：完整的API接口，支持程序化管理
+每小时定时刷新内置域名和启用的自动自定义域名。后台发起刷新后立即返回 202，任务分批运行，可查看真实进度与逐项失败原因。
 
-> 感谢原项目作者的贡献，本项目在其基础上通过AI技术进行了全面优化和功能扩展。
+- **手动固定** `manual`：刷新不覆盖 IP、开关或创建时间，可用于明确需要私网地址的映射。
+- **自动解析** `dns`：Cloudflare/Google DoH 收集经过严格校验的公共 IPv4/IPv6 地址。保留仍在候选中的现有地址，否则优先 IPv4。
+- **本地测速** `probe`：保留现有 IP，等待家庭旁路由验证候选。新建且没有旧值时先采用 DNS 候选，并明确标记未测速。
 
-## 特性
+所有写入由单个 SQLite Durable Object 串行协调，KV 仅发布下载快照。DNS 失败保留旧值，全部失败不推进成功时间；发布失败在后台显示并安排重试。每次配置变更或完成刷新前保存备份，保留最近 10 份。后台可导出完整状态、导入自定义域名、恢复最近配置。旧版 KV 的 `domain_data`、`custom_domains` 首次迁移时只读，保留原数据用于回退；v2 后续修改以 Durable Object 为准。
 
-### 🚀 核心功能
-- **智能IP优选**：AI算法自动检测最佳响应时间，选择最快IP
-- **全球CDN加速**：基于 Cloudflare Workers 部署，享受全球边缘网络
-- **自动更新机制**：每小时自动更新DNS记录，保持最新状态
-- **自定义域名**：支持添加和管理任意域名的IP优选
+## 本地开发与部署
 
-### 🛠️ 技术特性
-- **多DNS支持**：集成 Cloudflare DNS、Google DNS 等多个解析服务
-- **KV存储**：使用 Cloudflare KV 进行数据持久化存储
-- **RESTful API**：完整的API接口，支持程序化管理
-- **Web管理界面**：现代化的可视化管理后台
+Node.js 24+、pnpm 11.25.0：
 
-### 🔧 部署特性
-- **一键部署**：支持 Cloudflare Workers 一键部署
-- **GitHub Actions**：完整的CI/CD自动化部署流程
-- **安全控制**：简化的权限控制系统，保护管理接口
-
-## 快速开始
-
-### 🚀 一键部署（推荐）
-
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/violin321/custom-hosts-optimizer)
-
-1. 点击上方按钮
-2. 授权 GitHub 访问
-3. 选择 Cloudflare 账户
-4. 等待自动部署完成
-
-### 🔄 GitHub Actions 自动部署
-
-Fork 仓库后享受自动化部署，只需简单配置：
-
-#### 1️⃣ Fork 仓库
-点击仓库右上角的 "Fork" 按钮
-
-#### 2️⃣ 获取 Cloudflare 凭据
-- 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
-- 获取 **Global API Key** 和 **账户邮箱**
-- 创建 **KV 命名空间**（名称：`custom-hosts`）
-
-#### 3️⃣ 配置 GitHub Secrets
-在 Fork 的仓库中设置以下 Secrets：
-
-| Secret 名称 | 说明 |
-|------------|------|
-| `CLOUDFLARE_EMAIL` | Cloudflare 账户邮箱 |
-| `CLOUDFLARE_API_KEY` | Global API Key |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID |
-| `KV_NAMESPACE_ID` | KV 命名空间 ID |
-
-#### 4️⃣ 触发部署
-推送任何更改即可自动部署：
-```bash
-git commit --allow-empty -m "触发自动部署"
-git push origin main
+```sh
+pnpm install --frozen-lockfile
+pnpm check
+pnpm build
+pnpm dev
 ```
 
-> 💡 **详细配置指南**：如需详细的配置步骤，请查看 [部署指南](#部署指南) 章节
+本地 `.dev.vars` 设置测试用 `ADMIN_USERNAME`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`API_TOKEN`、`PROBE_TOKEN`；不要提交此文件。生产通过 GitHub production 环境 Secrets 注入，工作流保留原有凭据。
 
-### 🛠️ 手动部署
+部署必需 Secrets：`KV_NAMESPACE_ID`、`CLOUDFLARE_ACCOUNT_ID`、四个管理员/应用 Secrets。Cloudflare 身份优先使用限权 `CLOUDFLARE_API_TOKEN`；兼容原 `CLOUDFLARE_API_KEY` + `CLOUDFLARE_EMAIL`。配置支持 Token 不代表现有 Global API Key 已自动迁移。生产主机名在 `wrangler.toml` routes 中明确配置；其他部署者应替换域名。首次部署创建 SQLite Durable Object，使用现有 KV。
 
-如果需要自定义配置或本地开发：
+GitHub Actions 会先运行类型检查、回归测试、构建，再部署和同步 Secrets，随后启动刷新并检查关键域名、三种格式一致性、未认证管理请求、ETag 和数据年龄。每 6 小时独立执行可用性检查；失败显示为失败的 Actions 运行，通知取决于仓库个人通知设置。
 
-```bash
-# 克隆仓库
-git clone https://github.com/violin321/custom-hosts-optimizer.git
-cd custom-hosts-optimizer
+## 旁路由真实测速
 
-# 安装依赖
-pnpm install
-
-# 登录 Cloudflare
-npx wrangler login
-
-# 部署到 Cloudflare Workers
-pnpm run deploy
-```
-
-## 使用方法
-
-### 🌐 Web 界面访问
-
-部署成功后，访问您的 Worker URL：
-```
-https://your-worker-name.your-account.workers.dev
-```
-
-**主要功能：**
-- 📄 查看和下载 hosts 文件
-- 🎯 自定义域名管理
-- 📊 统计仪表板
-- 📖 API 文档
-
-### 📋 SwitchHosts 集成
-
-1. 下载 [SwitchHosts](https://github.com/oldj/SwitchHosts)
-2. 添加远程规则：
-   - **方案名**：Custom Hosts
-   - **类型**：远程
-   - **URL**：`https://your-worker-url.workers.dev/hosts`
-   - **自动更新**：1 小时
-
-### 🔗 直接使用 hosts 文件
-
-```bash
-# 下载 hosts 文件
-curl https://your-worker-url.workers.dev/hosts > hosts
-
-# 在 Linux/macOS 中应用
-sudo cp hosts /etc/hosts
-
-# 在 Windows 中应用（管理员权限）
-copy hosts C:\Windows\System32\drivers\etc\hosts
-```
-
-### 🧩 OpenClash / Clash hosts
-
-OpenClash/Clash 可直接使用 YAML 格式的 hosts 配置：
-
-```yaml
-hosts:
-  github.com: 140.82.x.x
-```
-
-接口地址：`https://hosts.violin47.dpdns.org/clash-hosts.yaml`
-
-通用格式：`https://your-worker-url.workers.dev/clash-hosts.yaml`
-
-可选参数：
-- `?custom=false`：只输出 GitHub 相关域名，不包含自定义域名。
-- `?refresh=true`：仅在携带有效后台会话或 API Token 时刷新缓存；未授权请求仍只读取缓存。
-
-## 自定义域名管理
-
-
-### 🔐 管理后台认证（必配）
-
-新版后台不再使用“隐藏路径 = API Key”。部署前请设置 Worker Secrets：
-
-```bash
-npx wrangler secret put ADMIN_USERNAME
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put SESSION_SECRET
-npx wrangler secret put API_TOKEN
-```
-
-建议：
-- `ADMIN_USERNAME`：后台用户名，例如 `admin`
-- `ADMIN_PASSWORD`：强密码，仅用于后台登录
-- `SESSION_SECRET`：32 字符以上随机字符串，用于签名登录 Cookie
-- `API_TOKEN`：程序化管理 API 的 Bearer Token
-
-后台入口：
+`router/probe.lua` 依赖 Lua、luci.jsonc、curl、start-stop-daemon、nft；`router/run-probe.sh` 使用 flock 防止重叠。安装到 `/usr/libexec/custom-hosts-probe.lua` 与 `/usr/bin/custom-hosts-probe`。专用 `PROBE_TOKEN` 仅允许下载候选清单和提交测速，不允许修改域名配置；其值保存在 root 只读的 `/etc/custom-hosts-probe.curl`：
 
 ```text
-https://your-worker-url.workers.dev/admin
+header = "Authorization: Bearer <PROBE_TOKEN>"
 ```
 
-管理 API 支持两种认证方式：
+部署前必须核对 OpenClash nft 输出链存在 `meta skgid 65534 ... return`。脚本用 root:nogroup 执行探测 curl，命中该直连豁免，HTTPS 使用真实域名/SNI、证书校验与 `--resolve` 固定候选 IP；不禁用证书验证。仅 IPv4 参与当前家庭测速，每域名最多 3 个候选、每候选 3 次成功响应（2xx/3xx 或 401/403/404/405）、按中位耗时选择。IPv6 可作为 DNS 候选，暂不宣称已做家庭 IPv6 测速。探测失败保留旧 IP，豁免缺失时拒绝上报。家中其他上游网关的转发行为不由此脚本证明。
 
-```bash
-curl -H "Authorization: Bearer $API_TOKEN" https://your-worker-url.workers.dev/api/custom-domains
-```
+服务端仅接受近 10 分钟测量、近 2 小时解析候选和 3–5 个有效样本；自定义手动项覆盖同名内置域名时也不会被探测覆盖。建议在每小时解析后第 5 分钟运行，第 12 分钟下载 hosts。状态文件 `/tmp/custom-hosts-probe-status.json`；日志标签 `custom-hosts-probe`。
 
-或登录后台后由浏览器自动携带 `HttpOnly` session cookie。
+## 恢复
 
-旧路径 `/admin-x7k9m3q2` 仅做兼容跳转，不再作为凭据。
-
-### 🛠️ Web 管理后台
-
-访问管理后台进行可视化操作：
-```
-https://your-worker-url.workers.dev/admin
-```
-
-**主要功能：**
-- 📊 **统计仪表板** - 查看域名数量和优选状态
-- ➕ **添加域名** - 支持批量添加自定义域名
-- ⚡ **一键优选** - 自动为域名选择最优IP
-- 🗑️ **管理操作** - 删除、清空等管理功能
-
-### 🚀 API 接口
-
-使用 RESTful API 进行程序化管理：
-
-```bash
-# 设置 API Token（通过 wrangler secret put API_TOKEN 配置）
-API_TOKEN="your-api-token"
-BASE_URL="https://your-worker-url.workers.dev"
-
-# 添加自定义域名
-curl -X POST "$BASE_URL/api/custom-domains" \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com", "description": "示例域名"}'
-
-# 优选域名IP
-curl -X POST "$BASE_URL/api/optimize/example.com" \
-  -H "Authorization: Bearer $API_TOKEN"
-
-# 获取优选后的hosts文件（公开）
-curl "$BASE_URL/hosts?optimize=true&custom=true"
-
-# 查看所有自定义域名（需要 API Token）
-curl -H "Authorization: Bearer $API_TOKEN" "$BASE_URL/api/custom-domains"
-```
-
-## 💡 应用场景
-
-### 🏢 企业内网优化
-为企业内部服务域名选择最优IP，提升内网访问速度：
-```bash
-# 添加企业内部域名
-curl -X POST "$BASE_URL/api/custom-domains" \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "internal.company.com", "description": "企业内部服务"}'
-```
-
-### 🌐 CDN节点优选
-为CDN域名选择最快的边缘节点，优化内容分发：
-```bash
-# 优选CDN域名
-curl -X POST "$BASE_URL/api/optimize/cdn.example.com" \
-  -H "Authorization: Bearer $API_TOKEN"
-```
-
-### 🎮 游戏加速
-为游戏服务器域名选择低延迟IP，提升游戏体验：
-```bash
-# 添加游戏服务器域名
-curl -X POST "$BASE_URL/api/custom-domains" \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "game.server.com", "description": "游戏服务器"}'
-```
-
-### 🔧 开发环境
-为开发和测试环境选择稳定的IP连接：
-```bash
-# 批量添加开发域名
-for domain in api.dev.com cdn.dev.com; do
-  curl -X POST "$BASE_URL/api/custom-domains" \
-    -H "Authorization: Bearer $API_TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"domain\": \"$domain\", \"description\": \"开发环境\"}"
-done
-```
-
-## 部署指南
-
-### 🔐 管理后台认证配置（必配）
-
-默认管理后台：`/admin`，需要管理员登录。旧路径 `/admin-x7k9m3q2` 仅保留为兼容跳转，不再作为认证凭据。
-
-**修改步骤：**
-1. Fork 仓库
-2. 设置 Worker Secrets：`ADMIN_USERNAME`、`ADMIN_PASSWORD`、`SESSION_SECRET`、`API_TOKEN`
-3. 登录 `/admin` 后使用后台；程序化 API 使用 `Authorization: Bearer <API_TOKEN>`
-4. 提交并推送代码触发自动部署
-
-### ⚙️ 详细配置指南
-
-<details>
-<summary>点击展开详细的 GitHub Actions 配置步骤</summary>
-
-#### 获取 Cloudflare API 凭据
-
-**方式一：Global API Key（用于自动部署，不是后台 API Token）**
-1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. 头像 → "My Profile" → "API Tokens"
-3. "Global API Key" → "View" → 输入密码
-4. 复制 API Key 和账户邮箱
-
-**方式二：API Token（高级）**
-1. "API Tokens" → "Create Token"
-2. 使用 "Edit Cloudflare Workers" 模板
-3. 权限：`Account:Cloudflare Workers:Edit`, `Zone:Zone Settings:Read`, `Zone:Zone:Read`
-4. 复制生成的 Token
-
-#### 创建 KV 命名空间
-1. Cloudflare Dashboard → "Workers & Pages" → "KV"
-2. "Create a namespace" → 命名为 `custom-hosts`
-3. 复制命名空间 ID
-
-#### 配置 GitHub Secrets
-在 Fork 的仓库中添加以下 Secrets：
-
-**Global API Key 方式：**
-- `CLOUDFLARE_EMAIL`: Cloudflare 账户邮箱
-- `CLOUDFLARE_API_KEY`: Global API Key
-- `CLOUDFLARE_ACCOUNT_ID`: 账户 ID
-- `KV_NAMESPACE_ID`: KV 命名空间 ID
-
-**API Token 方式：**
-- `CLOUDFLARE_API_TOKEN`: API Token
-- `CLOUDFLARE_ACCOUNT_ID`: 账户 ID
-- `KV_NAMESPACE_ID`: KV 命名空间 ID
-test
-</details>
-
-## 📊 技术特性
-
-### 🧠 智能算法
-- **并发IP测试**：同时测试多个IP地址，选择响应最快的
-- **智能缓存策略**：GitHub域名缓存1小时，自定义域名长期缓存
-- **自动更新机制**：每小时自动更新DNS记录，保持最新状态
-
-### 🔒 安全特性
-- **权限控制**：后台登录 + signed session cookie + Bearer API Token
-- **路径验证**：严格的管理后台路径格式验证
-- **环境隔离**：支持开发和生产环境分离
-
-### ⚡ 性能优化
-- **全球CDN**：基于Cloudflare Workers的全球边缘计算
-- **KV存储**：高性能的键值存储，支持全球同步
-- **并发处理**：支持高并发的IP优选请求
-
-## 🔧 故障排除
-
-### 🚨 常见问题
-
-#### 部署认证失败
-**问题**：GitHub Actions 提示 "Unable to authenticate request"
-**解决**：
-- 检查 GitHub Secrets 是否正确配置
-- 确认 Cloudflare Global API Key 没有多余空格
-- 验证 Cloudflare 账户权限
-
-#### KV 命名空间错误
-**问题**：提示 "KV namespace not found"
-**解决**：
-- 确认已创建 KV 命名空间
-- 检查 `KV_NAMESPACE_ID` Secret 配置
-- 验证命名空间 ID 是否正确
-
-#### API 调用 403 错误
-**问题**：API 调用返回权限错误
-**解决**：
-- 确认已通过 `wrangler secret put API_TOKEN` 设置 API Token
-- 程序化调用使用 `Authorization: Bearer <API_TOKEN>` 或 `x-api-key`
-- 后台页面需先登录 `/admin`
-
-#### 自定义域名无法添加
-**问题**：域名添加失败
-**解决**：
-- 确保域名格式正确（如：`example.com`）
-- 检查网络连接状态
-- 验证域名是否可解析
-
-### 🔍 调试方法
-
-```bash
-# 检查 wrangler 版本
-npx wrangler --version
-
-# 测试认证状态
-npx wrangler whoami
-
-# 查看实时日志
-npx wrangler tail
-
-# 本地开发调试
-npx wrangler dev
-```
-
-### 📞 获取帮助
-
-- 📖 查看 [Issues](https://github.com/violin321/custom-hosts-optimizer/issues)
-- 🐛 报告问题或建议
-- 💬 参与社区讨论
-
-## 🤝 贡献指南
-
-欢迎贡献代码和提出建议！
-
-1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/amazing-feature`
-3. 提交更改：`git commit -m 'Add amazing feature'`
-4. 推送分支：`git push origin feature/amazing-feature`
-5. 提交 Pull Request
-
-## 📄 开源许可
-
-本项目采用 [MIT 许可证](LICENSE) 开源。
-
----
-
-<div align="center">
-  <p>⭐ 如果这个项目对您有帮助，请给个 Star 支持一下！</p>
-  <p>🔧 基于 AI 技术优化，持续改进中...</p>
-</div>
+先导出完整备份再做大改。后台“恢复最近配置”会先备份当前状态；JSON 导入只替换自定义域名，不覆盖管理员凭据。代码回滚需要核对存储模式：旧版读取原 KV，不包含 v2 后新增配置，应先导出并准备数据转换，不能把代码回滚当作完整数据回滚。
