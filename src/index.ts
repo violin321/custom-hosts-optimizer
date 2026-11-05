@@ -212,7 +212,7 @@ for (const path of ["/hosts", "/hosts.json", "/clash-hosts.yaml"])
         .header("If-None-Match")
         ?.split(",")
         .map((s) => s.trim())
-        .includes(etag)
+        .some((tag) => tag === "*" || tag.replace(/^W\//, "") === etag)
     )
       return c.body(null, 304);
     if (path === "/hosts") return c.text(formatHosts(snapshot, custom));

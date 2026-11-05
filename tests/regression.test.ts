@@ -382,3 +382,18 @@ test("correct login sets secure cookie and request bodies are bounded", async ()
     413,
   );
 });
+
+test("compressed weak ETags use weak comparison for conditional GET", async () => {
+  const f = await fixture(),
+    a = await f.http("/hosts"),
+    etag = a.headers.get("etag")!;
+  assert.equal(
+    (await f.http("/hosts", { headers: { "If-None-Match": "W/" + etag } }))
+      .status,
+    304,
+  );
+  assert.equal(
+    (await f.http("/hosts", { headers: { "If-None-Match": "*" } })).status,
+    304,
+  );
+});

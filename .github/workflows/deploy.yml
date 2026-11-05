@@ -66,3 +66,7 @@ jobs:
         env:
           API_TOKEN: ${{ secrets.API_TOKEN }}
         run: node scripts/smoke.mjs
+      - name: Verify custom domain DNS and TLS
+        env:
+          BASE_URL: https://hosts.violin47.dpdns.org
+        run: node scripts/smoke.mjs

@@ -14,3 +14,7 @@ jobs:
         with:
           node-version: "24"
       - run: node scripts/smoke.mjs
+      - name: Verify custom domain DNS and TLS
+        env:
+          BASE_URL: https://hosts.violin47.dpdns.org
+        run: node scripts/smoke.mjs
