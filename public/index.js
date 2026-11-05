@@ -46,4 +46,34 @@ document.querySelector("#copy").addEventListener("click", async () => {
     message.textContent = "复制失败，请手动选择内容。";
   }
 });
+const tabs = [...document.querySelectorAll('[role="tab"]')];
+function selectTab(tab) {
+  for (const item of tabs) {
+    const selected = item === tab;
+    item.classList.toggle("active", selected);
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
+    document.getElementById(item.getAttribute("aria-controls")).hidden =
+      !selected;
+  }
+}
+for (const tab of tabs) {
+  tab.addEventListener("click", () => selectTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    const index = tabs.indexOf(tab);
+    const next = {
+      ArrowRight: (index + 1) % tabs.length,
+      ArrowLeft: (index + tabs.length - 1) % tabs.length,
+      Home: 0,
+      End: tabs.length - 1,
+    }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    selectTab(tabs[next]);
+    tabs[next].focus();
+  });
+}
+for (const link of document.querySelectorAll("[data-subscription]")) {
+  link.textContent = new URL(link.dataset.subscription, location.origin).href;
+}
 load();

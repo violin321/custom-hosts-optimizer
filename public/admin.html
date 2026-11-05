@@ -3,21 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>域名管理 / Hosts</title>
-    <link rel="stylesheet" href="/index.css" />
+    <title>自定义域名管理后台</title>
+    <link rel="stylesheet" href="/index.css?v=classic-20261105" />
+    <link rel="icon" href="/logo.svg" />
   </head>
-  <body>
+  <body class="admin-page">
     <main>
-      <nav>
-        <a class="brand" href="/">HOSTS <span>/ 管理后台</span></a>
-        <form action="/admin/logout" method="post">
-          <button>退出登录</button>
-        </form>
-      </nav>
-      <header class="page-heading">
-        <p class="eyebrow">管理与运行状态</p>
-        <h1>域名、更新与验证</h1>
-        <p id="identity"></p>
+      <header class="admin-header">
+        <div>
+          <h1>🛠️ 自定义域名管理后台</h1>
+          <p>管理和配置自定义域名，优化访问性能</p>
+          <p id="identity" class="user-pill"></p>
+        </div>
+        <div class="header-actions">
+          <a class="button" href="/">查看首页</a>
+          <form action="/admin/logout" method="post">
+            <button class="danger">退出登录</button>
+          </form>
+        </div>
       </header>
       <p id="message" role="status"></p>
       <section class="panel">
@@ -59,7 +62,7 @@
           <button type="submit">添加或更新</button>
         </form>
       </section>
-      <section>
+      <section class="panel">
         <div class="section-title">
           <h2>自定义域名</h2>
           <a class="button" href="/api/custom-domains/export">导出完整备份</a>

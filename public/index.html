@@ -3,77 +3,200 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Hosts / 域名解析</title>
-    <link rel="stylesheet" href="/index.css" />
+    <meta name="theme-color" content="#3b82f6" />
+    <title>优选自定义host - 自定义域名加速工具</title>
+    <link rel="stylesheet" href="/index.css?v=classic-20261105" />
     <link rel="icon" href="/logo.svg" />
   </head>
-  <body>
+  <body class="home-page">
     <main>
-      <nav>
-        <a class="brand" href="/">HOSTS <span>/ 家庭网络</span></a
-        ><a href="/admin">管理后台 ↗</a>
-      </nav>
-      <header>
-        <p class="eyebrow">域名解析 · 自动更新 · 本地测速</p>
-        <h1>让每一条解析，<br />都有据可查。</h1>
-        <p class="intro">
-          多源 DNS
-          收集候选地址，保留手动配置；本地测速结果与解析结果分别记录。更新失败时保留最近可用版本。
-        </p>
+      <header class="home-header">
+        <img src="/logo.svg" alt="" class="logo" width="80" height="80" />
+        <h1>优选自定义host</h1>
+        <p>使用 Cloudflare Workers 和公共 DNS API 智能优选域名 IP</p>
+        <a class="header-link" href="/admin">进入管理后台 ↗</a>
       </header>
-      <section class="summary" aria-live="polite">
-        <div>
-          <span class="label">可用记录</span><strong id="count">—</strong>
+      <nav class="tabs" role="tablist" aria-label="功能选项卡">
+        <button
+          id="tab-hosts"
+          class="tab active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="hosts-tab"
+          data-tab="hosts"
+        >
+          Hosts 文件
+        </button>
+        <button
+          id="tab-api"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="api-tab"
+          tabindex="-1"
+          data-tab="api"
+        >
+          API 文档
+        </button>
+        <button
+          id="tab-help"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="help-tab"
+          tabindex="-1"
+          data-tab="help"
+        >
+          使用帮助
+        </button>
+      </nav>
+      <section
+        id="hosts-tab"
+        class="tab-content"
+        role="tabpanel"
+        aria-labelledby="tab-hosts"
+      >
+        <h2>📋 当前 Hosts 内容</h2>
+        <div class="control-panel">
+          <button id="reload" class="accent">刷新显示</button>
+          <a class="button secondary" href="/hosts" download>下载 hosts</a>
+          <p id="message" role="status">正在读取可用快照…</p>
         </div>
-        <div>
-          <span class="label">数据最近变更</span><strong id="changed">—</strong>
-        </div>
-        <div>
-          <span class="label">最近成功检查</span><strong id="checked">—</strong>
-        </div>
-      </section>
-      <section>
-        <div class="section-title">
-          <h2>当前 hosts</h2>
-          <div class="actions">
-            <button id="reload">检查更新</button
-            ><button id="copy">复制内容</button
-            ><a class="button accent" href="/hosts" download>下载 hosts</a>
+        <div class="summary" aria-live="polite">
+          <div>
+            <span class="label">可用记录</span><strong id="count">—</strong>
+          </div>
+          <div>
+            <span class="label">数据最近变更</span
+            ><strong id="changed">—</strong>
+          </div>
+          <div>
+            <span class="label">最近成功检查</span
+            ><strong id="checked">—</strong>
           </div>
         </div>
-        <p id="message" role="status">正在读取可用快照…</p>
-        <pre id="hosts" tabindex="0"></pre>
+        <div class="hosts-container">
+          <div class="hosts-header">
+            <span>Hosts 文件内容</span
+            ><button id="copy" class="accent">复制</button>
+          </div>
+          <pre id="hosts" tabindex="0" aria-label="当前 Hosts 内容"></pre>
+        </div>
+        <h3>📥 快速使用方法</h3>
+        <div class="method-cards">
+          <section class="method-card">
+            <h4>SwitchHosts 工具</h4>
+            <p>添加远程 hosts，建议每小时更新一次。</p>
+            <p>
+              订阅地址：<a href="/hosts" data-subscription="/hosts">/hosts</a>
+            </p>
+          </section>
+          <section class="method-card">
+            <h4>Clash / OpenClash</h4>
+            <p>使用 YAML 格式的域名映射。</p>
+            <p>
+              下载地址：<a
+                href="/clash-hosts.yaml"
+                data-subscription="/clash-hosts.yaml"
+                >/clash-hosts.yaml</a
+              >
+            </p>
+          </section>
+        </div>
       </section>
-      <section class="columns">
-        <div>
-          <p class="eyebrow">订阅地址</p>
-          <h2>按你需要的格式使用</h2>
-          <dl>
-            <dt>Hosts</dt>
-            <dd><a href="/hosts">/hosts</a></dd>
-            <dt>JSON</dt>
-            <dd><a href="/hosts.json">/hosts.json</a></dd>
-            <dt>Clash YAML</dt>
-            <dd><a href="/clash-hosts.yaml">/clash-hosts.yaml</a></dd>
-          </dl>
+      <section
+        id="api-tab"
+        class="tab-content panel"
+        role="tabpanel"
+        aria-labelledby="tab-api"
+        hidden
+      >
+        <h2>🔧 API 接口文档</h2>
+        <h3>公开下载接口</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>接口</th>
+                <th>方法</th>
+                <th>描述</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><a href="/hosts">/hosts</a></td>
+                <td>GET</td>
+                <td>
+                  完整 hosts 文本；custom=false 时只包含内置 GitHub 域名。
+                </td>
+              </tr>
+              <tr>
+                <td><a href="/hosts.json">/hosts.json</a></td>
+                <td>GET</td>
+                <td>JSON 格式记录、数量和更新时间。</td>
+              </tr>
+              <tr>
+                <td><a href="/clash-hosts.yaml">/clash-hosts.yaml</a></td>
+                <td>GET</td>
+                <td>Clash YAML 域名映射。</td>
+              </tr>
+              <tr>
+                <td><a href="/health">/health</a></td>
+                <td>GET</td>
+                <td>服务可用性与最近成功检查时间。</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div>
-          <p class="eyebrow">更新说明</p>
-          <h2>自动检查，按变化发布</h2>
-          <p>
-            活动的自动域名每小时重新解析；手动固定项不会被覆盖。本地测速通过后可提交结果，选择有实际成功记录的候选地址。
-          </p>
-          <p>
-            刷新任务、手动 IP、停用开关和备份恢复均在<a href="/admin"
-              >管理后台</a
-            >操作，需要管理员登录。
-          </p>
-        </div>
+        <p>
+          三种格式来自同一份快照，支持 ETag
+          条件请求。下载已有内容不会启动解析任务。
+        </p>
+        <h3>域名管理与刷新</h3>
+        <p>
+          登录<a href="/admin">管理后台</a
+          >后，可以添加、编辑和停用域名，启动刷新并查看进度，导入配置或恢复备份。
+        </p>
+      </section>
+      <section
+        id="help-tab"
+        class="tab-content panel"
+        role="tabpanel"
+        aria-labelledby="tab-help"
+        hidden
+      >
+        <h2>🛠️ 使用帮助</h2>
+        <h3>如何使用 hosts</h3>
+        <ol>
+          <li>复制或下载 Hosts 文件内容。</li>
+          <li>导入 SwitchHosts 等工具，或按系统要求写入 hosts 文件。</li>
+          <li>定时重新下载，以获取更新后的映射。</li>
+        </ol>
+        <h3>域名更新模式</h3>
+        <ul>
+          <li><strong>手动固定：</strong>始终保留你指定的 IP。</li>
+          <li>
+            <strong>自动解析：</strong>每小时通过多源 DNS 收集并更新地址。
+          </li>
+          <li>
+            <strong>本地测速：</strong>旁路由验证候选 IP 的 HTTPS
+            连接，再提交实际测速结果。
+          </li>
+        </ul>
+        <p>
+          刷新失败会保留最近可用的记录。首页“刷新显示”读取当前快照，解析任务请在管理后台启动。
+        </p>
+        <h3>备份与恢复</h3>
+        <p>
+          管理后台可导出自定义域名配置、导入 JSON 备份，或恢复最近 10
+          次配置变更前的版本。
+        </p>
       </section>
       <footer>
-        Custom Hosts Optimizer · 2.0 <span>下载接口支持 ETag 条件请求</span>
+        <p>Custom Hosts Optimizer · 2.0 · 每小时自动检查</p>
+        <p>Made with ❤️ by Yan-nian</p>
       </footer>
     </main>
-    <script src="/index.js" defer></script>
+    <script src="/index.js?v=classic-20261105" defer></script>
   </body>
 </html>

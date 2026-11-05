@@ -3,29 +3,25 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>管理员登录 / Hosts</title>
-    <link rel="stylesheet" href="/index.css" />
+    <title>登录管理后台</title>
+    <link rel="stylesheet" href="/index.css?v=classic-20261105" />
+    <link rel="icon" href="/logo.svg" />
   </head>
-  <body>
+  <body class="login-page">
     <main>
-      <nav>
-        <a class="brand" href="/">HOSTS <span>/ 家庭网络</span></a
-        ><a href="/">返回下载页</a>
-      </nav>
       <section class="login">
-        <p class="eyebrow">管理员访问</p>
-        <h1>登录后台</h1>
-        <p>使用部署时设置的管理员账号，登录后可管理域名、刷新任务和备份。</p>
-        <form id="login" class="panel">
-          <label for="username">用户名</label
-          ><input
+        <h1>管理后台登录</h1>
+        <form id="login">
+          <label for="username">用户名</label>
+          <input
             id="username"
             name="username"
             autocomplete="username"
             required
             autofocus
-          /><label for="password">密码</label
-          ><input
+          />
+          <label for="password">密码</label>
+          <input
             id="password"
             name="password"
             type="password"
@@ -36,6 +32,7 @@
           <button type="submit">登录</button>
         </form>
         <p class="notice">会话有效期 24 小时。账号与 Cloudflare 账号独立。</p>
+        <a href="/">返回首页</a>
       </section>
     </main>
     <script src="/login.js" defer></script>
