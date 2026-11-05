@@ -9,6 +9,30 @@ const token = process.env.API_TOKEN;
 await checkPages(request);
 if (token) {
   const headers = { Authorization: `Bearer ${token}` };
+  const expectedCommit = process.env.GITHUB_SHA;
+  if (expectedCommit) {
+    let ready = false;
+    for (let i = 0; i < 36; i++) {
+      const response = await request("/api/status", { headers });
+      assert.ok(response.ok);
+      const data = await response.json();
+      if (
+        data.worker.commit === expectedCommit &&
+        data.coordinatorCommit === expectedCommit
+      ) {
+        ready = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    assert.ok(
+      ready,
+      "Request worker and coordinator must execute the deployed commit",
+    );
+    console.log(
+      `Verified request worker and coordinator commit ${expectedCommit.slice(0, 12)}`,
+    );
+  }
   assert.equal(
     (await request("/api/optimize-all", { method: "POST", headers })).status,
     202,

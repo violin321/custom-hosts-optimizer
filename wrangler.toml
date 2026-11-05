@@ -15,6 +15,9 @@ html_handling = "none"
 binding = "custom_hosts"
 id = "YOUR_KV_NAMESPACE_ID"
 
+[durable_objects.code_update_strategy]
+mode = "immediate"
+
 [[durable_objects.bindings]]
 name = "COORDINATOR"
 class_name = "HostsCoordinator"

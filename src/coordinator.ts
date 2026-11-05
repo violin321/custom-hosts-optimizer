@@ -70,6 +70,7 @@ export class HostsCoordinator {
     const { job, ...state } = this.state;
     return {
       ...state,
+      coordinatorCommit: this.env.COMMIT_HASH || "local",
       job: job ? { ...job, pending: undefined, results: undefined } : undefined,
     };
   }

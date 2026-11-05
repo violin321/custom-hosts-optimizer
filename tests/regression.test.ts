@@ -228,7 +228,12 @@ test("probe token cannot manage domains, sessions support Unicode and reject CSR
   );
   const value = await cookie(f.env, "管理员"),
     headers = { Cookie: value.split(";")[0] };
-  assert.equal((await f.http("/api/status", { headers })).status, 200);
+  f.env.COMMIT_HASH = "deployed-test-commit";
+  const status = await f.http("/api/status", { headers });
+  assert.equal(status.status, 200);
+  const metadata = (await status.json()) as any;
+  assert.equal(metadata.worker.commit, "deployed-test-commit");
+  assert.equal(metadata.coordinatorCommit, "deployed-test-commit");
   assert.equal(
     (
       await f.http("/api/reset", {
