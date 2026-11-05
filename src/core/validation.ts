@@ -20,7 +20,7 @@ export function ipAddress(value: unknown): string {
 }
 export function publicAddress(ip: string): boolean {
   if (isIP(ip) === 4) {
-    const [a, b, c] = ip.split(".").map(Number);
+    const [a, b, c, d] = ip.split(".").map(Number);
     return !(
       a === 0 ||
       a === 10 ||
@@ -30,7 +30,10 @@ export function publicAddress(ip: string): boolean {
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
       (a === 100 && b >= 64 && b <= 127) ||
-      (a === 192 && b === 0) ||
+      // IANA: 192.0.0.0/24 is special-purpose, except global anycast .9/.10;
+      // 192.0.2.0/24 is documentation. Other 192.0.* addresses can be public.
+      (a === 192 && b === 0 && c === 0 && d !== 9 && d !== 10) ||
+      (a === 192 && b === 0 && c === 2) ||
       (a === 198 && (b === 18 || b === 19)) ||
       (a === 198 && b === 51 && c === 100) ||
       (a === 203 && b === 0 && c === 113)

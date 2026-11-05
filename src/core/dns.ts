@@ -1,4 +1,4 @@
-import { publicAddress, domainName } from "./validation";
+import { publicAddress, domainName, errorText } from "./validation";
 export async function resolveCandidates(
   input: string,
 ): Promise<{ ips: string[]; source: string; durationMs: number }> {
@@ -42,25 +42,41 @@ export async function resolveCandidates(
             if (attempt === 0 && data.Status === 2) continue;
             throw Error(`DNS 状态 ${data.Status}`);
           }
-          return (data.Answer || [])
-            .filter(
-              (a) =>
-                a.type === (type === "A" ? 1 : 28) && publicAddress(a.data),
-            )
-            .map((a) => a.data);
+          const addresses = (data.Answer || []).filter(
+            (a) => a.type === (type === "A" ? 1 : 28),
+          );
+          return {
+            addressCount: addresses.length,
+            ips: addresses
+              .filter((a) => publicAddress(a.data))
+              .map((a) => a.data),
+          };
         }
-        return [];
+        throw Error("DNS 查询重试次数已耗尽");
       }),
     ),
   );
-  const ips = [
-    ...new Set(
-      results.flatMap((result) =>
-        result.status === "fulfilled" ? result.value : [],
-      ),
-    ),
-  ];
-  if (!ips.length) throw Error("所有 DNS 来源均未返回有效公共 IP");
+  const successful = results.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
+  const ips = [...new Set(successful.flatMap((result) => result.ips))];
+  if (!ips.length) {
+    if (!successful.length) {
+      const reasons = [
+        ...new Set(
+          results.flatMap((result) =>
+            result.status === "rejected" ? [errorText(result.reason)] : [],
+          ),
+        ),
+      ];
+      throw Error(`所有 DNS 查询均失败（${reasons.join("；")}）`);
+    }
+    if (successful.some((result) => result.addressCount > 0))
+      throw Error("DNS 返回的 IP 均为非公网或无效地址，已过滤");
+    if (successful.length < results.length)
+      throw Error("部分 DNS 查询失败，其余查询未返回 A/AAAA 地址");
+    throw Error("DNS 查询成功，但未返回 A/AAAA 地址");
+  }
   return {
     ips: ips.slice(0, 8),
     source: "cloudflare/google-doh",
