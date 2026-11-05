@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { checkPages } from "./check-pages.mjs";
 const base =
   process.env.BASE_URL ||
   "https://custom-hosts-optimizer.violinproxy.workers.dev";
 const request = (path, init = {}) =>
   fetch(base + path, { ...init, signal: AbortSignal.timeout(15000) });
 const token = process.env.API_TOKEN;
+await checkPages(request);
 if (token) {
   const headers = { Authorization: `Bearer ${token}` };
   assert.equal(

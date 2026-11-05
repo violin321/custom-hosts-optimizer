@@ -78,6 +78,11 @@ app.use("*", async (c, next) => {
   await next();
 });
 app.onError((e, c) => c.json({ error: errorText(e) }, 500));
+// HTML handling is disabled so /admin can stay behind authentication. Map the
+// public homepage explicitly rather than relying on an implicit directory index.
+app.get("/", (c) =>
+  c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url))),
+);
 app.get("/admin/login", (c) =>
   c.env.ASSETS.fetch(new Request(new URL("/login.html", c.req.url))),
 );
